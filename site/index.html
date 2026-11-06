@@ -156,8 +156,12 @@
   .tab .dot.ok { background: var(--ok); }
   .tab .dot.bad { background: var(--bad); }
   .tab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tab .x { color: var(--dim); font-size: 14px; padding: 0 2px; border-radius: 4px; }
+  .tab .x {
+    font: 14px/1 var(--mono); color: var(--dim); background: transparent; border: 0;
+    padding: 0 2px; margin: -2px -2px -2px 0; border-radius: 4px; cursor: pointer; flex: none;
+  }
   .tab .x:hover { color: var(--bad); background: rgba(240, 110, 110, .12); }
+  .tab .x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* ---------------------------------------------------------------- layout */
   .cols { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 18px; align-items: start; padding-top: 18px; }
@@ -246,6 +250,31 @@
   ul.ticks li .t { color: var(--dim); flex: none; }
   ul.ticks li .b { min-width: 0; }
   ul.ticks li.mono .b { font-family: var(--mono); font-size: 12.2px; word-break: break-all; }
+
+  /* ------------------------------------------------------------------ ban */
+  .ban { background: linear-gradient(180deg, #1a2130, var(--surface)); border: 1px solid #34435c; }
+  .ban-cmd {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: #0b0d11; border: 1px solid var(--border-2); border-radius: 9px; padding: 11px 13px;
+  }
+  .ban-cmd code {
+    font: 14px/1.45 var(--mono); color: #cfe3ff; word-break: break-all; flex: 1 1 320px; min-width: 0;
+  }
+  .ban-cmd code .arg { color: #ffd08a; }
+  .ban-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 13px; }
+  .ban-fields textarea {
+    font: 13px/1.4 var(--sans); color: var(--fg); background: var(--surface-2);
+    border: 1px solid var(--border-2); border-radius: 7px; padding: 8px 10px; min-height: 40px; resize: vertical; width: 100%;
+  }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 11px; align-items: center; }
+  .presets .lb { font-size: 10.8px; text-transform: uppercase; letter-spacing: .85px; color: var(--dim); margin-right: 2px; }
+  .pre {
+    font: 600 12px/1 var(--mono); color: var(--muted); background: var(--surface-2);
+    border: 1px solid var(--border-2); border-radius: 6px; padding: 7px 10px; cursor: pointer;
+  }
+  .pre:hover { color: var(--fg); border-color: #4b5f7d; }
+  .pre:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .pre[aria-pressed="true"] { color: #cfe3ff; border-color: #4b6f9f; background: rgba(111, 168, 255, .14); }
 
   /* --------------------------------------------------------------- filters */
   .filters { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
@@ -408,7 +437,8 @@
     </div>
     <div class="chips">
       <span class="chip lock">Только для админов · игрокам не показывать</span>
-      <span class="chip" id="chip-engine">SHA-256: уточняется…</span>
+      <span class="chip" id="chip-engine">печать: уточняется…</span>
+      <span class="chip" id="chip-active" hidden></span>
       <span class="chip ok" id="chip-net">Без сети: файл разбирается здесь же</span>
     </div>
   </div>
@@ -417,12 +447,12 @@
 <div class="wrap">
 
   <section class="intake" aria-label="Загрузка отчёта">
-    <div class="drop" id="drop" role="button" tabindex="0"
-         aria-label="Перетащи файл отчёта .swcc, или нажать Enter, чтобы выбрать его на диске">
+    <div class="drop" id="drop" role="group" tabindex="0"
+         aria-labelledby="drop-t" aria-describedby="drop-p">
       <div class="drop-icon" aria-hidden="true">⇩</div>
       <div class="drop-main">
-        <b>Перетащи сюда файл <span class="mono">.swcc</span> из Discord</b>
-        <p>Можно несколько сразу, можно вставить из буфера (<kbd>Ctrl</kbd>+<kbd>V</kbd>) или вставить текст отчёта.
+        <b id="drop-t">Перетащи сюда файл <span class="mono">.swcc</span> из Discord</b>
+        <p id="drop-p">Можно несколько сразу, можно вставить из буфера (<kbd>Ctrl</kbd>+<kbd>V</kbd>) или вставить текст отчёта.
            Файл читается браузером и не отправляется никуда: ни одного сетевого запроса, разбор и печать считаются локально.</p>
       </div>
       <div class="drop-side">
@@ -440,6 +470,7 @@
         <li><kbd>[</kbd> <kbd>]</kbd><span>переключить загруженный отчёт</span></li>
         <li><kbd>J</kbd><span>раскрыть/свернуть сырой JSON</span></li>
         <li><kbd>C</kbd><span>скопировать сводку по активному отчёту (для вставки в тикет)</span></li>
+        <li><kbd>B</kbd><span>скопировать готовую команду бана активного отчёта</span></li>
         <li><kbd>Esc</kbd><span>снять фокус / закрыть подсказку</span></li>
       </ul>
     </details>
@@ -454,10 +485,10 @@
       <section class="card" id="idle">
         <h2>Отчёт не загружен</h2>
         <p class="side-note">Сканер игрока пишет отчёт в файл <span class="mono">.swcc</span> и пересылает его тебе сам —
-           на сервер ничего не уходит. Здесь ты проверяешь присланный файл: целость машинычитаемой части, печать и
+           на сервер ничего не уходит. Здесь ты проверяешь присланный файл: целость машиночитаемой части, печать и
            содержимое findings.</p>
         <p class="side-note">Всё, что ниже памяти, строится по <span class="mono">payload</span>, а не по человекочитаемому
-           тексту отчёта: текст админ может перечитать глазами, но печатается только машиначитаемая копия.</p>
+           тексту отчёта: текст админ может перечитать глазами, но печатается только машиночитаемая копия.</p>
       </section>
     </div>
 
@@ -470,7 +501,7 @@
         <div class="sub">Пределы метода — прочитай до того, как решать</div>
         <ul id="memo-limits"></ul>
         <div class="key">
-          Печать = <span class="mono">SHA-256(salt + payload)</span>, первые 12 байт (24 hex). Она ловит
+          Печать — <b>контрольная сумма</b> машиночитаемой части файла. Она ловит
           <b>случайную правку и повреждение</b> файла, но <b>не авторство</b>: соль печати лежит в той же программе,
           что стоит у игрока. Чистый отчёт <b>не равен</b> честной игре.
         </div>
@@ -478,10 +509,10 @@
 
       <section class="card">
         <h2>О технике</h2>
-        <p class="side-note">Страница статична: ни CDN, ни шрифтов, ни запросов. Печать считается через
-          <span class="mono">crypto.subtle</span>, а если он недоступен (страница открыта с диска в браузере, который
-          считает <span class="mono">file://</span> небезопасным контекстом) — через встроенную реализацию SHA-256 на том
-          же алгоритме. О выбранной реализации сообщает чип вверху и строка ниже печати.</p>
+        <p class="side-note">Страница статична: ни CDN, ни шрифтов, ни запросов. Печать пересчитывается на месте —
+          браузерным движком, а когда он недоступен (страница открыта с диска в браузере без безопасного контекста),
+          встроенной реализацией страницы. Обе дают одинаковый результат; какая именно сработала — видно по чипу
+          вверху и по строке «Чем пересчитана печать» в блоке проверки.</p>
       </section>
     </aside>
   </div>
@@ -508,10 +539,10 @@
   var SEAL_MARKER = '!SEAL!';
   var SEAL_SALT = 'sunrise-worlds-swcc-seal-v1';
 
-  // Формулировки безuccess-случаев дословно как в Report::verify (src/swcc.rs),
+  // Формулировки отказов — дословно как в Report::verify (src/swcc.rs),
   // чтобы консоль, GUI и эта страница не противоречили друг другу.
   var MSG = {
-    noBegin: 'В файле нет машинычитаемой части: это не .swcc или файл обрезан.',
+    noBegin: 'В файле нет машиночитаемой части: это не .swcc или файл обрезан.',
     noEnd: 'Конец payload не найден: файл повреждён или пересобран вручную.',
     badBase64: 'payload не декодируется: файл изменён после формирования.',
     badJsonPrefix: 'payload не разобран: ',
@@ -801,9 +832,9 @@
     clean: 'Автоматических признаков не найдено. Это НЕ гарантия честной игры: база знает ограниченное число ' +
       'клиентов, а кастомный пересобранный чит она не увидит.',
     low_signal: 'Совпадения слабые или единичные. Бан по такому отчёту не обоснован.',
-    suspicious: 'Нужна ручная проверка: запроси файлы по хэшам и сравни с официальными релизами.',
-    high_risk: 'Несколько независимых признаков одного семейства либо критическое совпадение по хэшу. ' +
-      'Вероятность чит-клиента высокая - проверяй хэши перед решением.'
+    suspicious: 'Нужна ручная проверка: запроси названные файлы и сравни их с официальными релизами.',
+    high_risk: 'Несколько независимых признаков одного семейства либо критическое совпадение. ' +
+      'Вероятность чит-клиента высокая - проверяй находки вручную перед решением.'
   };
   var VERDICT_TONE = {
     no_data: 'info', clean: 'clean', low_signal: 'medium', suspicious: 'high', high_risk: 'critical'
@@ -837,18 +868,19 @@
     ArchiveContent: 'содержимое архива',
     TextContent: 'содержимое текста',
     LaunchLog: 'лог запуска',
-    KnownHash: 'совпал известный хэш'
+    KnownHash: 'файл совпадает с известным признаком'
   };
 
   var ROOT_KIND_RU = {
     standard: 'стандартная',
     launcher_instance: 'инстанс лаунчера',
-    manual: 'выбрана вручную'
+    manual: 'папка игры выбрана вручную',
+    drive: 'обход по метаданным'
   };
 
   var CHECK_MEMO = [
     'Отчёт - повод для проверки, а не доказательство. Бан только по заключению сканера обосновать нельзя.',
-    'Сверь SHA-256 названных файлов с официальными релизами модов: пересобранный jar под именем легитимного мода - главный приём маскировки.',
+    'Сверь названный файл с официальным релизом: пересобранный jar под именем легитимного мода - главный приём маскировки.',
     'Запроси у игрока сам файл (или ссылку на его публичный релиз) и путь к нему;совпадение пути в отчёте и присланного файла подтверждает находку.',
     'Смотри время изменения файлов: чит, скачанный за минуты до забан-события, и мод, установленный месяц назад, - это разные ситуации.',
     'Обнови базу сигнатур (signatures/custom.toml) при появлении нового клиента: встроенная база знает ограниченное число клиентов.',
@@ -858,8 +890,41 @@
     'Сканер ищет файлы по известным сигнатурам. Самописный или пересобранный чит он может не увидеть: чистый отчёт не равен честной игре.',
     'Ложные срабатывания возможны: совпадение имени или строки в легитимном моде - не чит. Поэтому у каждой находки указан признак и уверенность.',
     'Отчёт формируется на машине игрока, которую он контролирует. Печать ниже ловит случайную правку и повреждение файла, но не подделку: ключ печати находится в той же программе, что и у игрока.',
-    'Отсюда вывод: решение принимай по совокупности - отчёт + запрошенные файлы по хэшам + серверные логи поведения.'
+    'Отсюда вывод: решение принимай по совокупности - отчёт + запрошенные у игрока файлы + серверные логи поведения.'
   ];
+
+  /* ------------------------------------------------------------- команда бана
+     Строка `/ban <ник> <длительность> <причина>` выводится для любого заключения:
+     решение принимает админ, а шаблон всегда под рукой. Для «чисто» и «косвенных
+     признаков» длительность остаётся незаполненной — бан по такому отчёту не
+     обоснован, и придумывать её за админа страница не должна. */
+  var BAN_DURATION = {
+    high_risk: '30d',
+    suspicious: '7d'
+  };
+  var BAN_PRESETS = ['1h', '24h', '7d', '30d', 'permanent'];
+
+  function banDraft(report, out) {
+    var res = report.result || {};
+    var env = res.environment || {};
+    var fams = res.families || [];
+    var reason = fams.length
+      ? 'Читы: ' + fams.map(function (f) { return f.family; }).join(', ') +
+        ' · отчёт ' + (report.id || '—') + (out.intact ? '' : ' (печать не подтверждена)')
+      : (res.findings || []).length
+        ? 'Читы по отчёту ' + (report.id || '—')
+        : '';
+    return {
+      nick: report.player || env.nick_from_launch || '',
+      duration: BAN_DURATION[res.verdict] || '',
+      reason: reason
+    };
+  }
+
+  function banText(d) {
+    return '/ban ' + (d.nick || '<ник>') + ' ' + (d.duration || '<длительность>') +
+      ' ' + (d.reason || '<причина>');
+  }
 
   /* --------------------------------------------------------------------- утилиты */
 
@@ -1038,7 +1103,8 @@
     items: [],       // {id, name, size, text, outcome, error}
     active: -1,
     filter: { q: '', family: '', min: 'info' },
-    rawMode: 'pretty'
+    rawMode: 'pretty',
+    ban: null        // черновик команды бана активного отчёта
   };
   var seq = 0;
 
@@ -1117,6 +1183,7 @@
     var work = $('work');
     work.textContent = '';
     var item = activeItem();
+    paintActiveChip(item);
     if (!item) {
       work.append(idleCard());
       return;
@@ -1131,8 +1198,10 @@
     work.append(bannerCard(item, out));
     if (out.report) {
       var report = out.report;
-      work.append(verdictCard(report, out));
+      work.append(verdictCard(item, report, out));
+      work.append(banCard(item, report, out));
       work.append(rootsCard(report));
+      work.append(settingsCard(report));
       work.append(familiesCard(report));
       work.append(statsCard(report));
       work.append(findingsCard(report));
@@ -1146,12 +1215,31 @@
     work.append(rawCard(out));
   }
 
+  /// Чип в шапке: какой отчёт сейчас открыт и цел ли он. Админ держит в
+  /// вкладке несколько присланных файлов — без этой строки они различимы
+  /// только по заголовку вкладки-таба.
+  function paintActiveChip(item) {
+    var chip = $('chip-active');
+    if (!item) { chip.hidden = true; chip.textContent = ''; chip.className = 'chip'; return; }
+    var rep = item.outcome && item.outcome.report;
+    var parts = [];
+    if (rep && rep.player) parts.push(rep.player);
+    if (rep && rep.result) parts.push(ru(VERDICT_RU, rep.result.verdict, '—'));
+    if (item.error) parts.push('не прочитан');
+    else if (item.outcome && !item.outcome.intact) parts.push('печать не сошлась');
+    else if (item.outcome) parts.push('цел');
+    else parts.push('разбирается…');
+    chip.textContent = parts.join(' · ');
+    chip.className = 'chip' + (item.outcome && item.outcome.intact ? ' ok' : (item.error ? ' bad' : ''));
+    chip.hidden = false;
+  }
+
   function idleCard(msg) {
     var c = el('section', 'card');
     c.append(el('h2', null, 'Отчёт не загружен'));
     c.append(el('p', 'side-note', msg ||
       'Сканер игрока пишет отчёт в файл .swcc и пересылает его тебе сам — на сервер ничего не уходит. ' +
-      'Здесь ты проверяешь присланный файл: целость машинычитаемой части, печать и содержимое находок.'));
+      'Здесь ты проверяешь присланный файл: целость машиночитаемой части, печать и содержимое находок.'));
     return c;
   }
 
@@ -1181,20 +1269,20 @@
     box.append(sealCell('Печать в файле (!SEAL!)', out.fileSeal || 'нет строки печати', out.intact ? 'ok' : 'bad'));
     box.append(sealCell('Пересчитано в браузере', out.expectedSeal || 'н/д (payload не разобран)', out.intact ? 'ok' : 'bad'));
     box.append(sealCell('Payload, длина base64', out.payload ? fmtInt(out.payload.length) + ' симв. (между маркерами, пробелы удалены)' : '—', ''));
-    box.append(sealCell('Реализация SHA-256', engineLabel(out), ''));
+    box.append(sealCell('Чем пересчитана печать', engineLabel(out), ''));
     box.append(sealCell('Соль печати', CORE.SEAL_SALT, ''));
     box.append(sealCell('Файл', item.name + ' · ' + fmtBytes(item.size), ''));
     b.append(box);
 
     var algo = el('p', 'note');
-    algo.textContent = 'Алгоритм: hex( SHA-256( "' + CORE.SEAL_SALT + '" + payload ) )[0..12]. ' +
-      'Печать подтверждает только то, что машиначитаемая часть не менялась после формирования отчёта. ' +
-      'Она не доказывает авторство: соль лежит в программе игрока.';
+    algo.textContent = 'Печать = контрольная сумма машиночитаемой части с солью "' + CORE.SEAL_SALT + '", ' +
+      'первые 24 символа. Она подтверждает только то, что машиночитаемая часть не менялась после ' +
+      'формирования отчёта. Она не доказывает авторство: соль лежит в программе игрока.';
     b.append(algo);
 
     if (!out.intact && out.report) {
       var w = el('p', 'note bad');
-      w.textContent = 'Payload при этом разобрался: ниже показано содержимое файла così как оно прочитано. ' +
+      w.textContent = 'Payload при этом разобрался: ниже показано содержимое файла так, как оно прочитано. ' +
         'Сверяй с игроком поштучно — такому отчёту доверять нельзя.';
       b.append(w);
     }
@@ -1202,11 +1290,11 @@
   }
 
   function engineLabel(out) {
-    if (out.hashEngine === 'webcrypto') return 'WebCrypto (crypto.subtle.digest)';
+    if (out.hashEngine === 'webcrypto') return 'браузерный движок (crypto.subtle)';
     if (out.hashEngine === 'local-sha256') {
-      return 'встроенная реализация SHA-256 (crypto.subtle недоступен в этом контексте)';
+      return 'встроенная реализация страницы (браузерный движок тут недоступен)';
     }
-    return CORE.subtleAvailable() ? 'WebCrypto (crypto.subtle.digest)' : 'встроенная реализация SHA-256';
+    return CORE.subtleAvailable() ? 'браузерный движок (crypto.subtle)' : 'встроенная реализация страницы';
   }
 
   function sealCell(k, v, cls) {
@@ -1228,9 +1316,23 @@
         'Файл подменён или повреждён. Проверка: ' + out.detail;
     } else {
       p.textContent = 'Покажи игроку этот файл целиком и попроси пересохранить отчёт в программе, ' +
-        'а не копировать текст в Discord: в тексте нет машинычитаемой части, её нельзя проверить.';
+        'а не копировать текст в Discord: в тексте нет машиночитаемой части, её нельзя проверить.';
     }
     c.append(p);
+    // Шаблон команды нужен и здесь: иногда админ решает по другим материалам,
+    // а содержимое файла в этот раз прочесть нельзя.
+    var tpl = el('div', 'ban-cmd');
+    var tplCode = el('code');
+    tplCode.textContent = banText({ nick: '', duration: '', reason: '' });
+    var tplCopy = el('button', 'btn sm', 'Скопировать шаблон');
+    tplCopy.type = 'button';
+    tplCopy.addEventListener('click', function () {
+      copyText(banText({ nick: '', duration: '', reason: '' })).then(function (ok) {
+        toast(ok ? 'Шаблон скопирован' : 'Браузер не дал буфер обмена');
+      });
+    });
+    push(tpl, tplCode, tplCopy);
+    c.append(tpl);
     var pre = el('pre', 'excerpt');
     pre.textContent = headSnippet(out.body || '', 1400);
     c.append(el('p', 'note', 'Начало файла (первые 1400 симв.), чтобы понять, что именно пришло:'));
@@ -1244,7 +1346,7 @@
 
   /* ------------------------------------------------------------------ verdict */
 
-  function verdictCard(report, out) {
+  function verdictCard(item, report, out) {
     var res = report.result || {};
     var tone = VERDICT_TONE[res.verdict] || 'info';
     var c = el('section', 'card');
@@ -1253,7 +1355,8 @@
     var left = el('div');
     left.append(el('h2', 'vbig sev-' + tone, 'Заключение: ' + ru(VERDICT_RU, res.verdict, '—')));
     left.append(el('div', 'vsub',
-      'Отчёт ' + (report.id || '—') + ' · формат ' + (report.format || '—') +
+      'Отчёт ' + (report.id || '—') + ' · игрок ' + (report.player || 'ник не указан') +
+      ' · формат ' + (report.format || '—') +
       ' · приложение swcc ' + (report.app_version || '—') +
       ' · база сигнатур ' + (res.db_version || '—')));
     head.append(left);
@@ -1297,6 +1400,7 @@
       kvItem('Время формирования', fmtInstant(created) + (age ? ' · ' + age.text : '')),
       kvItem('Начало обхода', fmtInstant(res.started_at)),
       kvItem('Игрок (учётка ПК)', (res.environment && res.environment.user) || '—'),
+      kvItem('Ник из ввода игрока', report.player || 'не указан (старая версия swcc)'),
       kvItem('Ник из строки запуска', (res.environment && res.environment.nick_from_launch) || 'не определён'),
       kvItem('ОС / архитектура', (res.environment && res.environment.os) || '—'),
       kvItem('Часовой пояс', (res.environment && res.environment.timezone) || '—'),
@@ -1305,7 +1409,6 @@
       kvItem('Java из лога', (res.environment && res.environment.java_from_log) || 'не найдено'),
       kvItem('Загрузчик из лога', (res.environment && res.environment.loader_from_log) || 'не найдено'),
       kvItem('Согласие игрока', agreementText(report)),
-      kvItem('Глубокая распаковка архивов', report.deep_archives ? 'включена' : 'выключена'),
       kvItem('Источники базы сигнатур', (res.db_sources || []).join('; ') || '—')
     );
     c.append(grid);
@@ -1314,6 +1417,25 @@
     sent.textContent = 'Отправлено на сервер: НЕТ. Отчёт создаётся локально и никуда не уходит; ' +
       'игрок пересылает файл сам.';
     c.append(sent);
+
+    var actions = el('div', 'bar');
+    actions.style.paddingTop = '12px';
+    var tSum = el('button', 'btn sm', 'Скопировать сводку для тикета');
+    tSum.type = 'button';
+    tSum.title = 'Клавиша C';
+    tSum.addEventListener('click', function () {
+      copyText(summaryForTicket(item, report)).then(function (ok) {
+        toast(ok ? 'Сводка скопирована' : 'Браузер не дал буфер обмена');
+      });
+    });
+    var tJump = el('button', 'btn sm ghost', 'К находкам');
+    tJump.type = 'button';
+    tJump.addEventListener('click', function () {
+      var f = $('f-q');
+      if (f) { f.focus(); f.scrollIntoView({ block: 'center' }); }
+    });
+    push(actions, tSum, tJump);
+    c.append(actions);
 
     if (!out.intact) {
       var warn = el('p', 'note bad');
@@ -1328,6 +1450,127 @@
     b.append(el('span', null, label + ' '));
     b.append(el('b', sev ? 'sev-' + sev : null, fmtInt(n)));
     return b;
+  }
+
+  /* --------------------------------------------------------------- бан-строка */
+
+  function banCard(item, report, out) {
+    if (!state.ban || state.ban.key !== item.id) state.ban = banDraft(report, out);
+    var d = state.ban;
+
+    var c = el('section', 'card ban');
+    var h = el('h2');
+    h.append(el('span', null, 'Команда бана'));
+    h.append(el('span', 'n', ru(VERDICT_RU, (report.result || {}).verdict, '—')));
+    c.append(h);
+    c.append(el('p', 'hint', 'Шаблон /ban <ник> <длительность> <причина> — заполняется из отчёта, но правится вручную: ' +
+      'решение и формулировка причины остаются за админом.'));
+
+    var box = el('div', 'ban-cmd');
+    var code = el('code');
+    var copy = el('button', 'btn sm primary', 'Скопировать команду');
+    copy.type = 'button';
+    function paint() {
+      code.textContent = '';
+      code.append(document.createTextNode('/ban '));
+      code.append(arg(d.nick, '<ник>'));
+      code.append(document.createTextNode(' '));
+      code.append(arg(d.duration, '<длительность>'));
+      code.append(document.createTextNode(' '));
+      code.append(arg(d.reason, '<причина>'));
+      box.setAttribute('aria-label', banText(d));
+    }
+    function arg(v, ph) {
+      var s = el('span', 'arg');
+      s.textContent = (v === null || v === undefined || v === '') ? ph : String(v);
+      return s;
+    }
+    copy.addEventListener('click', function () {
+      copyText(banText(d)).then(function (ok) {
+        toast(ok ? 'Команда скопирована' : 'Браузер не дал буфер обмена — выдели строку вручную');
+      });
+    });
+    push(box, code, copy);
+    c.append(box);
+
+    var fields = el('div', 'ban-fields');
+    push(fields,
+      field('ban-nick', 'Ник игрока', 'text', d.nick, 'Steve_93', function (v) { d.nick = v; paint(); }),
+      field('ban-duration', 'Длительность', 'text', d.duration, '7d', function (v) { d.duration = v; paint(); paintPresets(); }),
+      taField('ban-reason', 'Причина', d.reason, 'Читы: Meteor Client · отчёт SWCC-…', function (v) { d.reason = v; paint(); })
+    );
+    c.append(fields);
+
+    var presets = el('div', 'presets');
+    presets.append(el('span', 'lb', 'длительность'));
+    var presButtons = [];
+    BAN_PRESETS.forEach(function (p) {
+      var b = el('button', 'pre', p);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        d.duration = p;
+        var f = $('ban-duration');
+        if (f) f.value = p;
+        paintPresets();
+        paint();
+      });
+      presButtons.push([b, p]);
+      presets.append(b);
+    });
+    c.append(presets);
+    function paintPresets() {
+      presButtons.forEach(function (pair) {
+        pair[0].setAttribute('aria-pressed', pair[1] === d.duration ? 'true' : 'false');
+      });
+    }
+
+    var res = report.result || {};
+    if (!d.nick) {
+      c.append(el('p', 'note warn', 'В отчёте нет ника: его вводит игрок в программе, начиная с версии swcc 0.1.0. ' +
+        'Допиши вручную — по учётке Windows команду составлять нельзя.'));
+    }
+    if (res.verdict === 'clean' || res.verdict === 'no_data' || res.verdict === 'low_signal') {
+      c.append(el('p', 'note', 'По этому заключению бан не обоснован: ' +
+        (VERDICT_ADVICE[res.verdict] || 'случай единичный.') +
+        ' Строка показана на случай, если решение принято по другим материалам.'));
+    }
+    if (!out.intact) {
+      c.append(el('p', 'note bad', 'Печать этого отчёта не сошлась — содержимому файла доверять нельзя, ' +
+        'и причина в команде это отмечает.'));
+    }
+
+    paint();
+    paintPresets();
+    return c;
+  }
+
+  function field(id, label, type, value, ph, oninput) {
+    var f = el('div', 'fld');
+    var l = el('label', null, label);
+    l.setAttribute('for', id);
+    var i = el('input');
+    i.type = type;
+    i.id = id;
+    i.value = value || '';
+    i.placeholder = ph;
+    i.addEventListener('input', function () { oninput(i.value.trim()); });
+    f.append(l, i);
+    return f;
+  }
+
+  function taField(id, label, value, ph, oninput) {
+    var f = el('div', 'fld');
+    f.style.gridColumn = '1 / -1';
+    var l = el('label', null, label);
+    l.setAttribute('for', id);
+    var t = el('textarea');
+    t.id = id;
+    t.value = value || '';
+    t.placeholder = ph;
+    t.rows = 2;
+    t.addEventListener('input', function () { oninput(t.value.trim()); });
+    f.append(l, t);
+    return f;
   }
   function kvItem(k, v, cls) {
     var i = el('div', 'kv-item');
@@ -1359,7 +1602,7 @@
       var li = el('li', 'mono');
       li.append(el('span', 't', '▪'));
       var body = el('span', 'b');
-      body.textContent = '[' + ru(ROOT_KIND_RU, r.kind, r.kind || '—') + '] ' + (r.label || '—') + ' — ' + (r.path || '—');
+      body.textContent = '[' + ru(ROOT_KIND_RU, r.kind, r.kind || '—') + '] ' + (r.label || '—') + ' — ' + dispPath(r.path);
       li.append(body);
       list.append(li);
     });
@@ -1367,6 +1610,40 @@
     c.append(el('p', 'note', 'Исключены из обхода: assets, libraries, runtime, bin, каталоги нативок ' +
       '(легитимные и огромные).'));
     return c;
+  }
+
+  /* ---------------------------------------------------------------- settings */
+
+  function settingsCard(report) {
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Параметры проверки'));
+    var list = report.settings || [];
+    if (!list.length) {
+      c.append(el('p', 'empty', 'Отчёт сформирован версией swcc до появления настроек: профиль обхода не записан. ' +
+        'Считай, что проверка была полной по умолчанию, и уточняйте это у игрока.'));
+      return c;
+    }
+    var ul = el('ul', 'ticks');
+    list.forEach(function (s) {
+      var li = el('li');
+      li.append(el('span', 't', '▪'));
+      var b = el('span', 'b');
+      b.textContent = String(s);
+      li.append(b);
+      ul.append(li);
+    });
+    c.append(ul);
+    c.append(el('p', 'note', 'Настройки выбирает игрок перед проверкой. Если чтение содержимого или разбор архивов ' +
+      'были выключены, часть признаков просто не могла быть найдена — это «не досмотрено», а не «чисто».'));
+    return c;
+  }
+
+  /// Верbatim-префикс Windows (\\?\) в путях — служебный шум: читаемому виду
+  /// он только мешает, а значение пути не меняет.
+  function dispPath(p) {
+    var s = String(p === null || p === undefined ? '—' : p);
+    if (s.slice(0, 4) === '\\\\?\\') s = s.slice(4);
+    return s || '—';
   }
 
   /* ----------------------------------------------------------------- families */
@@ -1431,7 +1708,7 @@
       kvItem('Архивов открыто', fmtInt(st.archives_opened)),
       kvItem('Архивов распаковано глубоко', fmtInt(st.archives_deep_scanned)),
       kvItem('Архивов пропущено по бюджету', fmtInt(st.archives_skipped_by_budget)),
-      kvItem('SHA-256 вычислено', plural(st.files_hashed, 'файл', 'файла', 'файлов') + ', ' + fmtInt(Math.round((st.hash_bytes || 0) / 1048576)) + ' МБ'),
+      kvItem('Системных каталогов пропущено', fmtInt(st.dirs_pruned_system)),
       kvItem('Файлов слишком больших', fmtInt(st.files_too_large)),
       kvItem('Файлов не читалось', fmtInt(st.files_unreadable)),
       kvItem('Симлинков пропущено', fmtInt(st.symlinks_skipped)),
@@ -1448,8 +1725,8 @@
         ' — содержимое этих архивов не проверялось.');
     }
     if ((st.files_too_large || 0) > 0 || (st.files_unreadable || 0) > 0) {
-      flags.push('Часть файлов не хэшировалась (слишком большие или не читались): ' +
-        fmtInt(st.files_too_large) + ' + ' + fmtInt(st.files_unreadable) + ' — по хэшу они не опознаны.');
+      flags.push('Часть файлов не открывалась на содержимое (крупнее лимита или не читалась): ' +
+        fmtInt(st.files_too_large) + ' + ' + fmtInt(st.files_unreadable) + ' — проверены только по имени и метаданным.');
     }
     if (!flags.length) {
       c.append(el('p', 'note', 'Лимиты обхода и бюджеты не достигнуты: проверено всё, что нашлось в корнях.'));
@@ -1492,7 +1769,7 @@
     var q = el('input');
     q.type = 'search';
     q.id = 'f-q';
-    q.placeholder = 'ник, Meteor, mods/, хэш…';
+    q.placeholder = 'ник, Meteor, mods/, путь…';
     q.setAttribute('aria-label', qLabel.textContent);
     q.value = state.filter.q;
     push(qField, qLabel, q);
@@ -1538,7 +1815,7 @@
     push(filters, qField, minField, famField, reset, shown);
     c.append(filters);
     c.append(el('p', 'hint', 'Как и запрос в программе (scanner::query): подстрока ищется по семейству, сигнатуре, ' +
-      'пути, сути, способу проверки, типу и уровню, плюс по признакам и хэшам.'));
+      'пути, сути, способу проверки, типу и уровню, плюс по признакам.'));
 
     var list = el('div', 'findings');
     list.id = 'f-list';
@@ -1592,7 +1869,6 @@
       ru(KIND_RU, f.kind), SEVERITY_RU[f.severity] || String(f.severity || '')
     ];
     var ev = f.evidence || {};
-    if (ev.sha256) hay.push(ev.sha256);
     if (ev.root) hay.push(ev.root);
     if (ev.source) hay.push(ev.source);
     if (ev.referenced_file) hay.push(ev.referenced_file);
@@ -1640,7 +1916,7 @@
       body.append(cell('Где', ev.root));
       body.append(cell('Размер', fmtBytes(ev.size_bytes)));
       body.append(mtimeCell(ev.modified));
-      body.append(hashCell(ev.sha256));
+      body.append(askCell(ev.root, ev.rel_path));
     } else if (ev.type === 'directory' || (typeof ev.rel_path === 'string' && typeof ev.size_bytes === 'undefined')) {
       body.append(cell('Каталог', (ev.rel_path || '') + '/', 'mono'));
       body.append(cell('Где', ev.root));
@@ -1711,25 +1987,21 @@
     return d;
   }
 
-  function hashCell(h) {
+  /// То, о чём просят игрока: путь внутри папки игры. Копируется одним кликом,
+  /// чтобы запрос в Discord не собирать вручную из окон.
+  function askCell(rootLabel, relPath) {
     var d = el('div', 'fcell');
     d.style.gridColumn = '1 / -1';
-    d.append(el('div', 'k', 'SHA-256'));
-    if (h) {
-      d.append(copyButton(String(h), String(h)));
-      var tip = el('div', 'v');
-      tip.style.color = 'var(--dim)';
-      tip.style.fontSize = '11.5px';
-      tip.style.marginTop = '3px';
-      tip.textContent = 'Клик — скопировать. Сверь с официальным релизом: пересобранный jar под именем ' +
-        'легитимного мода — главный приём маскировки.';
-      d.append(tip);
-    } else {
-      var v = el('div', 'v');
-      v.textContent = 'не вычислен (вне бюджета или слишком большой)';
-      v.style.color = 'var(--dim)';
-      d.append(v);
-    }
+    d.append(el('div', 'k', 'Что запросить у игрока'));
+    var full = (rootLabel ? rootLabel + ' → ' : '') + (relPath || '—');
+    d.append(copyButton(full, relPath || ''));
+    var tip = el('div', 'v');
+    tip.style.color = 'var(--dim)';
+    tip.style.fontSize = '11.5px';
+    tip.style.marginTop = '3px';
+    tip.textContent = 'Клик — скопировать путь. Присланный по этому пути файл сверь с официальным релизом: ' +
+      'пересобранный jar под именем легитимного мода — главный приём маскировки.';
+    d.append(tip);
     return d;
   }
 
@@ -1788,18 +2060,18 @@
     if (mods.length) c.append(inventoryTable('Файлы в mods/addons (в порядке обхода)', mods));
     if (packs.length) {
       c.append(el('div', 'note', 'Ресурспаки:'));
-      c.append(inventoryTable('Ресурспаки', packs, true));
+      c.append(inventoryTable('Ресурспаки', packs));
     }
-    c.append(el('p', 'note', 'Хэш null означает «не вычислен»: файл больше бюджета хэширования или не читался. ' +
-      'Отсутствие хэша — не «чисто», а «не проверено по хэшу».'));
+    c.append(el('p', 'note', 'Список построен по тому, что сканер нашёл в mods/ и resourcepacks/: имя, путь и ' +
+      'размер. Если семейство или путь незнакомы — это повод запросить файл у игрока, а не готовый приговор.'));
     return c;
   }
 
-  function inventoryTable(caption, entries, noHash) {
+  function inventoryTable(caption, entries) {
     var wrap = el('div', 'tbl-scroll');
     var t = el('table');
     var head = el('tr');
-    ['Название', 'Путь', 'Размер', 'SHA-256'].forEach(function (x) { head.append(el('th', null, x)); });
+    ['Название', 'Путь', 'Размер'].forEach(function (x) { head.append(el('th', null, x)); });
     var thead = el('thead');
     thead.append(head);
     t.append(thead);
@@ -1809,10 +2081,6 @@
       tr.append(el('td', null, m.name || '—'));
       tr.append(el('td', 'p', m.rel_path || '—'));
       tr.append(el('td', 'num', fmtBytes(m.size_bytes)));
-      var hc = el('td');
-      if (m.sha256) hc.append(copyButton(String(m.sha256), String(m.sha256)));
-      else hc.append(el('span', 'mono', noHash ? 'не вычислен' : 'хэш не вычислен'));
-      tr.append(hc);
       tb.append(tr);
     });
     t.append(tb);
@@ -1854,7 +2122,7 @@
     var inner = el('div', 'inner');
     var bar = el('div', 'bar');
     bar.append(el('span', 'note', 'Не является доказательством: печать считается только по payload. ' +
-      'Этот текст игрок может отредактировать без поломки печати — заключение всегда бери из машинычитаемой части.'));
+      'Этот текст игрок может отредактировать без поломки печати — заключение всегда бери из машиночитаемой части.'));
     var copy = el('button', 'btn sm', 'Скопировать текст');
     copy.type = 'button';
     copy.addEventListener('click', function () {
@@ -1927,10 +2195,15 @@
       'Заключение: ' + ru(VERDICT_RU, res.verdict) + ' (балл ' + (res.score || 0) + ')',
       'Приложение: swcc ' + report.app_version + ', база ' + (res.db_version || '—'),
       'Сформирован: ' + report.created_at,
-      'Игрок: ' + ((res.environment && res.environment.user) || '—') +
+      'Игрок: ' + (report.player || 'ник не указан') +
+        ' · учётка ПК: ' + ((res.environment && res.environment.user) || '—') +
         ' · ОС: ' + ((res.environment && res.environment.os) || '—'),
+      'Параметры: ' + ((report.settings || []).join(' · ') || 'не записаны'),
       'Печать: ' + (item.outcome && item.outcome.intact ? 'сходится' : 'НЕ сходится') +
-        ' (' + (item.outcome ? item.outcome.fileSeal || '—' : '—') + ')'
+        ' (' + (item.outcome ? item.outcome.fileSeal || '—' : '—') + ')',
+      'Команда: ' + banText(state.ban && state.ban.key === item.id
+        ? state.ban
+        : banDraft(report, item.outcome || {}))
     ];
     var fams = res.families || [];
     if (fams.length) {
@@ -1949,25 +2222,34 @@
     if (state.items.length < 1) { box.hidden = true; return; }
     box.hidden = false;
     state.items.forEach(function (item, idx) {
-      var t = el('button', 'tab');
-      t.type = 'button';
+      // div, а не button: внутри живёт настоящая кнопка «убрать», а вложенные
+      // кнопки браузер отрезает. Роль и клавиши добавляем руками.
+      var t = el('div', 'tab');
       t.setAttribute('role', 'tab');
+      t.tabIndex = 0;
       t.setAttribute('aria-selected', idx === state.active ? 'true' : 'false');
       var dot = el('span', 'dot' + (item.error ? ' bad' : (item.outcome ? (item.outcome.intact ? ' ok' : ' bad') : '')));
       t.append(dot);
+      var rep = item.outcome && item.outcome.report;
       var nm = el('span', 'nm');
-      nm.textContent = (item.outcome && item.outcome.report && item.outcome.report.id)
-        ? item.outcome.report.id + ' · ' + item.name
+      nm.textContent = rep && rep.id
+        ? ((rep.player ? rep.player + ' · ' : '') + rep.id + ' · ' + item.name)
         : item.name;
       t.append(nm);
-      var close = el('span', 'x', '×');
+      var close = el('button', 'x', '×');
+      close.type = 'button';
       close.setAttribute('title', 'Убрать');
+      close.setAttribute('aria-label', 'Убрать ' + (rep && rep.id ? rep.id : item.name) + ' из списка');
       close.addEventListener('click', function (e) {
         e.stopPropagation();
         removeItem(idx);
       });
       t.append(close);
-      t.addEventListener('click', function () { state.active = idx; render(); });
+      function pick() { state.active = idx; render(); }
+      t.addEventListener('click', pick);
+      t.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); pick(); }
+      });
       box.append(t);
     });
   }
@@ -2096,6 +2378,15 @@
           var txt = summaryForTicket(item, item.outcome.report);
           copyText(txt).then(function (ok) { toast(ok ? 'Сводка скопирована' : 'Браузер не дал буфер обмена'); });
         }
+      } else if (k === 'b') {
+        var it = activeItem();
+        if (it && it.outcome && it.outcome.report) {
+          e.preventDefault();
+          var draft = state.ban && state.ban.key === it.id ? state.ban : banDraft(it.outcome.report, it.outcome);
+          copyText(banText(draft)).then(function (ok) {
+            toast(ok ? 'Команда скопирована' : 'Браузер не дал буфер обмена — выдели строку вручную');
+          });
+        }
       } else if (k === '?') {
         e.preventDefault();
         var d = $('keys');
@@ -2114,13 +2405,13 @@
   function paintEngineChip() {
     var chip = $('chip-engine');
     if (CORE.subtleAvailable()) {
-      chip.textContent = 'SHA-256: WebCrypto (crypto.subtle)';
+      chip.textContent = 'печать: браузерный движок';
       chip.className = 'chip ok';
     } else {
-      chip.textContent = 'SHA-256: встроенная реализация (crypto.subtle недоступен)';
+      chip.textContent = 'печать: встроенная реализация страницы';
       chip.className = 'chip warn';
-      chip.title = 'Страница открыта в контексте без secure-context: crypto.subtle недоступен, ' +
-        'поэтому печать считается встроенной реализацией того же SHA-256. Результат идентичен.';
+      chip.title = 'Так выходит, когда страницу открыли с диска в браузере без безопасного контекста. ' +
+        'Обе реализации дают одинаковый результат: сверка с печатью в файле от этого не слабее.';
     }
   }
 

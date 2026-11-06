@@ -1,0 +1,2139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<title>SWCC · проверка отчёта .swcc</title>
+<meta name="description" content="Служебный верификатор отчётов .swcc: печать и разбор считаются в браузере, файл никуда не отправляется.">
+<style>
+  :root {
+    --bg: #0d0f12;
+    --bg-2: #11141a;
+    --surface: #161a21;
+    --surface-2: #1b2029;
+    --surface-3: #212836;
+    --border: #262d38;
+    --border-2: #333c4a;
+    --fg: #e6e8ea;
+    --muted: #9aa4b0;
+    --dim: #6d7784;
+    --accent: #6fa8ff;
+    --accent-2: #8fb8ff;
+    --ok: #78dc78;
+    --bad: #f06e6e;
+    --warn: #e6b45a;
+    --critical: 240, 90, 90;
+    --high: 235, 140, 80;
+    --medium: 220, 200, 110;
+    --low: 150, 190, 220;
+    --info: 128, 128, 128;
+    --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+    --sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(111, 168, 255, .07), transparent 60%),
+      radial-gradient(800px 400px at 0% 0%, rgba(240, 110, 110, .05), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 var(--sans);
+    min-height: 100vh;
+  }
+
+  a { color: var(--accent-2); }
+  code, kbd, pre, .mono { font-family: var(--mono); }
+
+  kbd {
+    background: var(--surface-3);
+    border: 1px solid var(--border-2);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11.5px;
+    color: var(--fg);
+  }
+
+  .wrap { max-width: 1520px; margin: 0 auto; padding: 0 20px 64px; }
+
+  /* ---------------------------------------------------------------- header */
+  header.top {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(13, 15, 18, .92);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(6px);
+  }
+  .top-inner {
+    max-width: 1520px; margin: 0 auto; padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .mark {
+    width: 30px; height: 30px; border-radius: 7px; flex: none;
+    background: linear-gradient(150deg, #223a5c, #14181f);
+    border: 1px solid #3a4c6a;
+    display: grid; place-items: center;
+    font: 700 12px/1 var(--mono); color: #a9c8ff; letter-spacing: -.5px;
+  }
+  .brand { display: flex; flex-direction: column; gap: 1px; }
+  .brand b { font-size: 14.5px; font-weight: 650; letter-spacing: .2px; }
+  .brand span { font-size: 11.5px; color: var(--dim); }
+  .chips { display: flex; gap: 7px; margin-left: auto; flex-wrap: wrap; }
+  .chip {
+    font-size: 11.5px; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--border-2); background: var(--surface);
+    color: var(--muted); white-space: nowrap;
+  }
+  .chip.ok { color: var(--ok); border-color: rgba(120, 220, 120, .4); background: rgba(120, 220, 120, .08); }
+  .chip.bad { color: var(--bad); border-color: rgba(240, 110, 110, .4); background: rgba(240, 110, 110, .08); }
+  .chip.warn { color: var(--warn); border-color: rgba(230, 180, 90, .4); background: rgba(230, 180, 90, .08); }
+  .chip.lock { color: #b9c6d8; border-color: #3d4b5f; }
+
+  /* ---------------------------------------------------------------- intake */
+  .intake { padding: 22px 0 6px; }
+  .drop {
+    border: 1.5px dashed var(--border-2); border-radius: 12px;
+    background: linear-gradient(180deg, var(--surface), rgba(22, 26, 33, .55));
+    padding: 22px; display: flex; gap: 18px; align-items: center;
+    transition: border-color .12s, background .12s, transform .12s;
+    cursor: pointer;
+  }
+  .drop:hover { border-color: #46587a; }
+  .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .drop.hot { border-color: var(--accent); background: rgba(111, 168, 255, .08); transform: translateY(-1px); }
+  .drop-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .drop-main b { font-size: 15.5px; font-weight: 620; }
+  .drop-main p { margin: 0; color: var(--muted); font-size: 12.8px; }
+  .drop-side { margin-left: auto; display: flex; gap: 8px; flex: none; }
+  .drop-icon {
+    width: 42px; height: 42px; border-radius: 10px; flex: none;
+    border: 1px solid var(--border-2); background: var(--surface-3);
+    display: grid; place-items: center; color: #9fc0f5; font: 600 15px/1 var(--mono);
+  }
+
+  .btn {
+    font: 600 13px/1 var(--sans); color: var(--fg);
+    background: var(--surface-3); border: 1px solid var(--border-2);
+    padding: 9px 14px; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .btn:hover { background: #28303f; border-color: #44526a; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary { background: #23406d; border-color: #3a6296; }
+  .btn.primary:hover { background: #2a4b7e; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { padding: 6px 10px; font-size: 12px; font-weight: 550; }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  .keys { margin: 12px 0 0; font-size: 12.2px; color: var(--dim); }
+  .keys summary { cursor: pointer; color: var(--muted); }
+  .keys ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .keys li { display: flex; gap: 9px; align-items: baseline; }
+  .keys li kbd { min-width: 34px; text-align: center; }
+
+  .err {
+    margin: 12px 0 0; padding: 10px 13px; border-radius: 8px; font-size: 13px;
+    background: rgba(240, 110, 110, .1); border: 1px solid rgba(240, 110, 110, .35); color: #ffbcbc;
+  }
+
+  /* ----------------------------------------------------------------- tabs */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 16px 0 0; }
+  .tab {
+    font: 550 12.5px/1 var(--mono); color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 8px 11px; border-radius: 7px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; max-width: 420px;
+  }
+  .tab:hover { border-color: var(--border-2); color: var(--fg); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tab[aria-selected="true"] { background: var(--surface-3); color: var(--fg); border-color: #475972; }
+  .tab .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--dim); }
+  .tab .dot.ok { background: var(--ok); }
+  .tab .dot.bad { background: var(--bad); }
+  .tab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .x { color: var(--dim); font-size: 14px; padding: 0 2px; border-radius: 4px; }
+  .tab .x:hover { color: var(--bad); background: rgba(240, 110, 110, .12); }
+
+  /* ---------------------------------------------------------------- layout */
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 18px; align-items: start; padding-top: 18px; }
+  .col-main { display: grid; gap: 14px; min-width: 0; }
+  .col-side { display: grid; gap: 14px; position: sticky; top: 66px; min-width: 0; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 11px; padding: 15px 17px; min-width: 0;
+  }
+  .card > h2, .card > h3 {
+    margin: 0 0 12px; font-size: 11.5px; font-weight: 700; letter-spacing: 1.1px;
+    text-transform: uppercase; color: var(--dim);
+    display: flex; align-items: center; gap: 9px;
+  }
+  .card > h2 .n, .card > h3 .n {
+    font: 600 11px/1 var(--mono); color: var(--muted);
+    background: var(--surface-3); border: 1px solid var(--border-2);
+    padding: 3px 7px; border-radius: 20px; letter-spacing: 0;
+  }
+  .hint { color: var(--dim); font-size: 12px; margin: -6px 0 12px; }
+
+  /* ----------------------------------------------------------- integrity */
+  .banner { border-radius: 11px; border: 1px solid var(--border); padding: 16px 18px; background: var(--surface); }
+  .banner.ok { border-color: rgba(120, 220, 120, .45); background: linear-gradient(180deg, rgba(120, 220, 120, .1), var(--surface) 60%); }
+  .banner.bad { border-color: rgba(240, 110, 110, .5); background: linear-gradient(180deg, rgba(240, 110, 110, .12), var(--surface) 60%); }
+  .banner.part { border-color: rgba(230, 180, 90, .45); background: linear-gradient(180deg, rgba(230, 180, 90, .1), var(--surface) 60%); }
+  .banner .head { display: flex; gap: 13px; align-items: flex-start; }
+  .banner .glyph {
+    width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center;
+    font: 700 17px/1 var(--mono); border: 1px solid currentColor;
+  }
+  .banner.ok .glyph { color: var(--ok); background: rgba(120, 220, 120, .12); }
+  .banner.bad .glyph { color: var(--bad); background: rgba(240, 110, 110, .12); }
+  .banner.part .glyph { color: var(--warn); background: rgba(230, 180, 90, .12); }
+  .banner .title { font-size: 18px; font-weight: 700; letter-spacing: .2px; margin: 0; }
+  .banner.ok .title { color: var(--ok); }
+  .banner.bad .title { color: #ff9b9b; }
+  .banner.part .title { color: var(--warn); }
+  .banner .detail { margin: 4px 0 0; font-size: 13.5px; color: #d6dce4; }
+  .banner .cli { margin: 6px 0 0; font: 12px/1.5 var(--mono); color: var(--dim); word-break: break-word; }
+  .sealbox { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 9px; margin-top: 14px; }
+  .sealcell { background: rgba(0, 0, 0, .22); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; min-width: 0; }
+  .sealcell .k { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
+  .sealcell .v { font: 13px/1.4 var(--mono); margin-top: 3px; word-break: break-all; }
+  .sealcell .v.ok { color: var(--ok); }
+  .sealcell .v.bad { color: #ff9b9b; }
+
+  /* --------------------------------------------------------------- verdict */
+  .vhead { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .vbig { margin: 0; font-size: 25px; font-weight: 750; letter-spacing: -.2px; line-height: 1.15; }
+  .vsub { font: 12.5px/1.4 var(--mono); color: var(--dim); }
+  .score { display: flex; align-items: center; gap: 11px; margin-left: auto; }
+  .score .num { font: 700 27px/1 var(--mono); }
+  .score .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .9px; color: var(--dim); }
+  .bar { height: 7px; border-radius: 5px; background: var(--surface-3); overflow: hidden; margin: 14px 0 2px; border: 1px solid var(--border); }
+  .bar i { display: block; height: 100%; border-radius: 5px; }
+  .advice { margin: 11px 0 0; font-size: 13.2px; color: #c9d2dd; }
+  .sev-critical { color: rgb(var(--critical)); } .bg-critical { background: rgb(var(--critical)); }
+  .sev-high { color: rgb(var(--high)); } .bg-high { background: rgb(var(--high)); }
+  .sev-medium { color: rgb(var(--medium)); } .bg-medium { background: rgb(var(--medium)); }
+  .sev-low { color: rgb(var(--low)); } .bg-low { background: rgb(var(--low)); }
+  .sev-info { color: rgb(var(--info)); } .bg-info { background: rgb(var(--info)); }
+  .sev-clean { color: var(--ok); } .bg-clean { background: var(--ok); }
+
+  .counts { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 14px; }
+  .cnt {
+    font: 600 12px/1 var(--mono); padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--border-2); background: var(--surface-2); color: var(--muted);
+  }
+  .cnt b { font-weight: 700; }
+
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; margin-top: 14px; background: var(--border); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .kv-item { background: var(--surface); padding: 9px 12px; min-width: 0; }
+  .kv-k { font-size: 10.8px; text-transform: uppercase; letter-spacing: .85px; color: var(--dim); }
+  .kv-v { font-size: 13.4px; margin-top: 3px; word-break: break-word; color: #dde3ea; }
+  .kv-v.mono { font-family: var(--mono); font-size: 12.4px; }
+  .kv-v.muted { color: var(--dim); }
+
+  .note { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .note.warn { color: var(--warn); }
+  .note.bad { color: #ff9b9b; }
+
+  ul.ticks { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  ul.ticks li { font-size: 12.9px; display: flex; gap: 8px; }
+  ul.ticks li .t { color: var(--dim); flex: none; }
+  ul.ticks li .b { min-width: 0; }
+  ul.ticks li.mono .b { font-family: var(--mono); font-size: 12.2px; word-break: break-all; }
+
+  /* --------------------------------------------------------------- filters */
+  .filters { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .fld > label { font-size: 10.8px; text-transform: uppercase; letter-spacing: .85px; color: var(--dim); }
+  input[type="search"], input[type="text"], select {
+    font: 13px/1 var(--sans); color: var(--fg);
+    background: var(--surface-2); border: 1px solid var(--border-2);
+    border-radius: 7px; padding: 8px 10px; min-width: 0;
+  }
+  input[type="search"] { font-family: var(--mono); font-size: 12.5px; min-width: 260px; }
+  select { cursor: pointer; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .shown { margin-left: auto; font: 12px/1 var(--mono); color: var(--muted); padding-bottom: 8px; }
+
+  /* --------------------------------------------------------------- findings */
+  .findings { display: grid; gap: 11px; }
+  .fcard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    border-left: 3px solid var(--border-2); padding: 13px 15px; min-width: 0;
+  }
+  .fcard.sev-critical { border-left-color: rgb(var(--critical)); }
+  .fcard.sev-high { border-left-color: rgb(var(--high)); }
+  .fcard.sev-medium { border-left-color: rgb(var(--medium)); }
+  .fcard.sev-low { border-left-color: rgb(var(--low)); }
+  .fcard.sev-info { border-left-color: rgb(var(--info)); }
+  .fhead { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+  .fid { font: 600 11.5px/1 var(--mono); color: var(--dim); }
+  .badge {
+    font: 700 10.8px/1 var(--sans); text-transform: uppercase; letter-spacing: .7px;
+    padding: 5px 9px; border-radius: 5px; border: 1px solid;
+  }
+  .badge.sev-critical { color: rgb(var(--critical)); border-color: rgba(var(--critical), .55); background: rgba(var(--critical), .15); }
+  .badge.sev-high { color: rgb(var(--high)); border-color: rgba(var(--high), .55); background: rgba(var(--high), .15); }
+  .badge.sev-medium { color: rgb(var(--medium)); border-color: rgba(var(--medium), .5); background: rgba(var(--medium), .13); }
+  .badge.sev-low { color: rgb(var(--low)); border-color: rgba(var(--low), .5); background: rgba(var(--low), .13); }
+  .badge.sev-info { color: rgb(var(--info)); border-color: rgba(var(--info), .55); background: rgba(var(--info), .15); }
+  .ffam { font-size: 14.5px; font-weight: 650; }
+  .fkind { font-size: 12.5px; color: var(--muted); }
+  .fsig { font: 12px/1 var(--mono); color: var(--dim); }
+  .fmeta { margin-left: auto; display: flex; gap: 8px; }
+  .pill { font: 600 11.5px/1 var(--mono); padding: 5px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-2); color: var(--muted); white-space: nowrap; }
+  .fbody { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 9px 16px; margin-top: 11px; }
+  .fcell { min-width: 0; }
+  .fcell .k { font-size: 10.6px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
+  .fcell .v { font-size: 12.9px; margin-top: 2px; word-break: break-word; }
+  .fcell .v.mono { font-family: var(--mono); font-size: 12.2px; }
+  .copy {
+    font: 12.2px/1.3 var(--mono); color: #c6d5e8; text-align: left; width: 100%;
+    background: rgba(0, 0, 0, .3); border: 1px solid var(--border-2); border-radius: 6px;
+    padding: 6px 8px; cursor: copy; word-break: break-all;
+  }
+  .copy:hover { border-color: #4b5f7d; background: rgba(0, 0, 0, .45); color: #eaf2ff; }
+  .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .copy.done { border-color: rgba(120, 220, 120, .5); color: var(--ok); }
+  .sub-k { font-size: 10.6px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-top: 12px; }
+  .rules { margin: 7px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+  .rules li { font-size: 12.6px; display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; gap: 9px; align-items: baseline; }
+  .rules li .rk { color: var(--muted); font-size: 11.6px; text-transform: lowercase; }
+  .rules li .rd { font-family: var(--mono); font-size: 12px; color: #d8e0ea; word-break: break-all; }
+  .rules li .rc { color: var(--dim); font-family: var(--mono); font-size: 11.4px; }
+  .prose { margin-top: 11px; display: grid; gap: 8px; }
+  .prose div { border-left: 2px solid var(--border-2); padding: 2px 0 2px 11px; }
+  .prose .pk { font-size: 10.8px; text-transform: uppercase; letter-spacing: .85px; color: var(--dim); }
+  .prose .pt { font-size: 13px; color: #d3dae2; margin-top: 2px; }
+  .prose .pt.verify { color: #9cc8ff; }
+  .excerpt {
+    margin: 3px 0 0; padding: 8px 10px; background: rgba(0, 0, 0, .3); border: 1px solid var(--border-2);
+    border-radius: 6px; font: 11.8px/1.5 var(--mono); color: #cfd8e3;
+    white-space: pre-wrap; word-break: break-word; max-height: 132px; overflow: auto;
+  }
+  .empty { color: var(--dim); font-size: 13px; }
+
+  /* ----------------------------------------------------------------- tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12.7px; }
+  caption { text-align: left; font-size: 12px; color: var(--dim); padding-bottom: 7px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 10.6px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); font-weight: 650; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: rgba(255, 255, 255, .02); }
+  td.num { font-family: var(--mono); white-space: nowrap; color: var(--muted); }
+  td.p, td .p { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .tbl-scroll { overflow-x: auto; }
+
+  /* ------------------------------------------------------------------ raw */
+  details.box { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; }
+  details.box > summary {
+    cursor: pointer; padding: 12px 16px; font-size: 11.5px; font-weight: 700;
+    letter-spacing: 1.1px; text-transform: uppercase; color: var(--dim); list-style: none;
+    display: flex; align-items: center; gap: 9px;
+  }
+  details.box > summary::-webkit-details-marker { display: none; }
+  details.box > summary::before { content: "+"; font: 700 14px/1 var(--mono); color: var(--muted); }
+  details.box[open] > summary::before { content: "-"; }
+  details.box > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 11px; }
+  details.box > .inner { padding: 0 16px 15px; border-top: 1px solid var(--border); }
+  details.box > .inner > .bar { display: flex; gap: 8px; padding: 11px 0; flex-wrap: wrap; align-items: center; }
+  pre.out {
+    margin: 0; padding: 12px; max-height: 460px; overflow: auto;
+    background: #0b0d11; border: 1px solid var(--border); border-radius: 8px;
+    font: 11.8px/1.55 var(--mono); color: #c9d3df; white-space: pre; tab-size: 2;
+  }
+
+  /* ------------------------------------------------------------------ memo */
+  .memo { background: linear-gradient(180deg, #1a1f28, var(--surface)); border: 1px solid #33405a; border-radius: 11px; padding: 14px 16px; }
+  .memo h2 { margin: 0 0 3px; font-size: 12.2px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: #a9c1e4; }
+  .memo .lead { font-size: 12.3px; color: var(--muted); margin: 0 0 10px; }
+  .memo ol, .memo ul { margin: 0; padding-left: 19px; display: grid; gap: 7px; }
+  .memo li { font-size: 12.5px; color: #ccd5e0; }
+  .memo li::marker { color: var(--dim); font-family: var(--mono); font-size: 11px; }
+  .memo .sub { margin: 15px 0 7px; font-size: 11.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: #d8a76a; }
+  .memo .key { border-top: 1px solid var(--border); margin-top: 13px; padding-top: 11px; font-size: 12.3px; color: #cfd8e3; }
+  .memo .key b { color: #ffd08a; }
+
+  .side-note { font-size: 12.2px; color: var(--muted); }
+  .side-note + .side-note { margin-top: 8px; }
+
+  footer.foot { padding: 26px 0 0; color: var(--dim); font-size: 11.8px; display: grid; gap: 4px; }
+
+  /* ---------------------------------------------------------------- toast */
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 14px);
+    background: #222b38; border: 1px solid #43536c; color: #eaf0f7;
+    padding: 9px 15px; border-radius: 9px; font: 12.5px/1 var(--sans);
+    opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; z-index: 90;
+    max-width: min(560px, 90vw); box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  @media (max-width: 1180px) {
+    .cols { grid-template-columns: minmax(0, 1fr); }
+    .col-side { position: static; }
+  }
+  @media (max-width: 900px) {
+    .wrap, .top-inner { padding-left: 14px; padding-right: 14px; }
+    .drop { flex-wrap: wrap; }
+    .drop-side { margin-left: 0; width: 100%; }
+    input[type="search"] { min-width: 0; width: 100%; }
+    .fld { flex: 1 1 100%; }
+    .vbig { font-size: 21px; }
+    .score { margin-left: 0; }
+    .rules li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+    .fmeta { margin-left: 0; width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="mark" aria-hidden="true">SW</div>
+    <div class="brand">
+      <b>SWCC · проверка отчёта <span class="mono">.swcc</span></b>
+      <span>Служебный инструмент администрации Sunrise Worlds</span>
+    </div>
+    <div class="chips">
+      <span class="chip lock">Только для админов · игрокам не показывать</span>
+      <span class="chip" id="chip-engine">SHA-256: уточняется…</span>
+      <span class="chip ok" id="chip-net">Без сети: файл разбирается здесь же</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="intake" aria-label="Загрузка отчёта">
+    <div class="drop" id="drop" role="button" tabindex="0"
+         aria-label="Перетащи файл отчёта .swcc, или нажать Enter, чтобы выбрать его на диске">
+      <div class="drop-icon" aria-hidden="true">⇩</div>
+      <div class="drop-main">
+        <b>Перетащи сюда файл <span class="mono">.swcc</span> из Discord</b>
+        <p>Можно несколько сразу, можно вставить из буфера (<kbd>Ctrl</kbd>+<kbd>V</kbd>) или вставить текст отчёта.
+           Файл читается браузером и не отправляется никуда: ни одного сетевого запроса, разбор и печать считаются локально.</p>
+      </div>
+      <div class="drop-side">
+        <button type="button" class="btn primary" id="pick">Выбрать файл…</button>
+        <button type="button" class="btn ghost" id="clear">Очистить всё</button>
+      </div>
+      <input type="file" id="picker" class="sr" multiple accept=".swcc,application/octet-stream,text/plain">
+    </div>
+
+    <details class="keys" id="keys">
+      <summary>Клавиши</summary>
+      <ul>
+        <li><kbd>O</kbd><span>выбрать файл</span></li>
+        <li><kbd>/</kbd><span>поиск по находкам</span></li>
+        <li><kbd>[</kbd> <kbd>]</kbd><span>переключить загруженный отчёт</span></li>
+        <li><kbd>J</kbd><span>раскрыть/свернуть сырой JSON</span></li>
+        <li><kbd>C</kbd><span>скопировать сводку по активному отчёту (для вставки в тикет)</span></li>
+        <li><kbd>Esc</kbd><span>снять фокус / закрыть подсказку</span></li>
+      </ul>
+    </details>
+
+    <p class="err" id="intake-err" hidden></p>
+  </section>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Загруженные отчёты" hidden></div>
+
+  <div class="cols">
+    <div class="col-main" id="work">
+      <section class="card" id="idle">
+        <h2>Отчёт не загружен</h2>
+        <p class="side-note">Сканер игрока пишет отчёт в файл <span class="mono">.swcc</span> и пересылает его тебе сам —
+           на сервер ничего не уходит. Здесь ты проверяешь присланный файл: целость машинычитаемой части, печать и
+           содержимое findings.</p>
+        <p class="side-note">Всё, что ниже памяти, строится по <span class="mono">payload</span>, а не по человекочитаемому
+           тексту отчёта: текст админ может перечитать глазами, но печатается только машиначитаемая копия.</p>
+      </section>
+    </div>
+
+    <aside class="col-side">
+      <section class="memo" id="memo" aria-labelledby="memo-h">
+        <h2 id="memo-h">Как проверять этот отчёт (памятка админу)</h2>
+        <p class="lead">Повторяет разделы отчёта «КАК ПРОВЕРЯТЬ ЭТОТ ОТЧЁТ» и «ПРЕДЕЛЫ МЕТОДА» — формулировки те же,
+           что и в программе.</p>
+        <ol id="memo-check"></ol>
+        <div class="sub">Пределы метода — прочитай до того, как решать</div>
+        <ul id="memo-limits"></ul>
+        <div class="key">
+          Печать = <span class="mono">SHA-256(salt + payload)</span>, первые 12 байт (24 hex). Она ловит
+          <b>случайную правку и повреждение</b> файла, но <b>не авторство</b>: соль печати лежит в той же программе,
+          что стоит у игрока. Чистый отчёт <b>не равен</b> честной игре.
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>О технике</h2>
+        <p class="side-note">Страница статична: ни CDN, ни шрифтов, ни запросов. Печать считается через
+          <span class="mono">crypto.subtle</span>, а если он недоступен (страница открыта с диска в браузере, который
+          считает <span class="mono">file://</span> небезопасным контекстом) — через встроенную реализацию SHA-256 на том
+          же алгоритме. О выбранной реализации сообщает чип вверху и строка ниже печати.</p>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="foot">
+    <div>SWCC · офлайн-верификатор отчётов. Формат: <span class="mono">swcc/1</span>.</div>
+    <div>Файл обрабатывается только в памяти вкладки: ничего не сохраняется, никуда не отправляется, лог не ведётся.</div>
+  </footer>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- ==========================================================================
+     ЯДРО: разбор .swcc. Чистые функции, без DOM — тот же блок проверяется
+     тестом (node .scratch/test-core.mjs), так что тестируется именно рабочий код.
+     ========================================================================== -->
+<script>
+(function (global) {
+  'use strict';
+
+  var WIDTH = 72;
+  var PAYLOAD_START = '!PAYLOAD-BEGIN!';
+  var PAYLOAD_END = '!PAYLOAD-END!';
+  var SEAL_MARKER = '!SEAL!';
+  var SEAL_SALT = 'sunrise-worlds-swcc-seal-v1';
+
+  // Формулировки безuccess-случаев дословно как в Report::verify (src/swcc.rs),
+  // чтобы консоль, GUI и эта страница не противоречили друг другу.
+  var MSG = {
+    noBegin: 'В файле нет машинычитаемой части: это не .swcc или файл обрезан.',
+    noEnd: 'Конец payload не найден: файл повреждён или пересобран вручную.',
+    badBase64: 'payload не декодируется: файл изменён после формирования.',
+    badJsonPrefix: 'payload не разобран: ',
+    noSeal: 'Печать в файле отсутствует.',
+    sealMismatch: function (found, expected) {
+      return 'Печать не сходится: в файле ' + found + ', пересчитано ' + expected +
+        '. Текст payload изменён.';
+    },
+    intact: function (id, verdictRu) {
+      return 'Целостность подтверждена. Отчёт ' + id + ' не редактирован (заключение: ' + verdictRu + ').';
+    }
+  };
+
+  var B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var B64_LOOKUP = new Int8Array(256).fill(-1);
+  for (var bi = 0; bi < 64; bi++) B64_LOOKUP[B64_ALPHABET.charCodeAt(bi)] = bi;
+  var B64_PAD = 61; // '='
+
+  var HEX_DIGITS = '0123456789abcdef';
+
+  function toHex(bytes) {
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) {
+      out += HEX_DIGITS[(bytes[i] >> 4) & 15] + HEX_DIGITS[bytes[i] & 15];
+    }
+    return out;
+  }
+
+  // Rust удаляет из payload всё, что char::is_whitespace(). JS-\s почти совпадает,
+  // но не знает U+0085; добавляем его, чтобы разбиение не зависело от переносов строк.
+  var WHITESPACE_RE = /[\s\u0085]/g;
+  function stripWhitespace(s) { return s.replace(WHITESPACE_RE, ''); }
+  function stripBom(s) { return s.replace(/^\uFEFF+/, ''); }
+
+  // --- SHA-256: резервная реализация на случай, когда crypto.subtle недоступен ---
+  var SHA_K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ]);
+
+  function sha256Local(bytes) {
+    var rotr = function (x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; };
+    var h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+    var h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+    var len = bytes.length;
+    var total = ((len + 9 + 63) >> 6) << 6;
+    var p = new Uint8Array(total);
+    p.set(bytes);
+    p[len] = 0x80;
+    var dv = new DataView(p.buffer);
+    dv.setUint32(total - 8, Math.floor(len / 0x20000000), false);
+    dv.setUint32(total - 4, (len << 3) >>> 0, false);
+    var w = new Uint32Array(64);
+    for (var off = 0; off < total; off += 64) {
+      for (var i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4, false);
+      for (i = 16; i < 64; i++) {
+        var s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        var s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      var a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (i = 0; i < 64; i++) {
+        var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        var ch = (e & f) ^ (~e & g);
+        var t1 = (h + S1 + ch + SHA_K[i] + w[i]) >>> 0;
+        var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        var mj = (a & b) ^ (a & c) ^ (b & c);
+        var t2 = (S0 + mj) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+      h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+    }
+    var out = new Uint8Array(32);
+    var odv = new DataView(out.buffer);
+    var hs = [h0, h1, h2, h3, h4, h5, h6, h7];
+    for (var k = 0; k < 8; k++) odv.setUint32(k * 4, hs[k], false);
+    return out;
+  }
+
+  function subtleAvailable() {
+    try {
+      return !!(global.crypto && global.crypto.subtle &&
+        typeof global.crypto.subtle.digest === 'function');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function sha256(bytes) {
+    if (subtleAvailable()) {
+      try {
+        var view = bytes.slice();
+        return global.crypto.subtle.digest('SHA-256', view.buffer).then(function (buf) {
+          return new Uint8Array(buf);
+        });
+      } catch (e) {
+        return Promise.resolve(sha256Local(bytes));
+      }
+    }
+    return Promise.resolve(sha256Local(bytes));
+  }
+
+  function concatBytes() {
+    var parts = Array.prototype.slice.call(arguments);
+    var n = 0;
+    for (var i = 0; i < parts.length; i++) n += parts[i].length;
+    var out = new Uint8Array(n), o = 0;
+    for (i = 0; i < parts.length; i++) { out.set(parts[i], o); o += parts[i].length; }
+    return out;
+  }
+
+  // seal = hex(SHA-256(salt + payload))[0..12] — первые 12 байт digest, 24 hex.
+  function sealFromDigest(digest) { return toHex(digest.subarray(0, 12)); }
+
+  function sealFor(payload, localOnly) {
+    var enc = new TextEncoder();
+    var joined = concatBytes(enc.encode(SEAL_SALT), enc.encode(payload));
+    if (localOnly) return Promise.resolve(sealFromDigest(sha256Local(joined)));
+    return sha256(joined).then(sealFromDigest);
+  }
+
+  function decodeBase64Strict(s) {
+    if (!s || s.length % 4 !== 0) return null;
+    var end = s.length, pad = 0;
+    if (s.charCodeAt(end - 1) === B64_PAD) {
+      pad = 1;
+      if (s.charCodeAt(end - 2) === B64_PAD) pad = 2;
+    }
+    var body = end - pad;
+    if (body % 4 === 1) return null; // оборванный квартет: Rust тоже не декодирует
+    var acc = 0, bits = 0, outLen = Math.floor((body * 3) / 4);
+    var out = new Uint8Array(outLen), o = 0;
+    for (var i = 0; i < body; i++) {
+      var v = B64_LOOKUP[s.charCodeAt(i) & 255];
+      if (v < 0) return null;
+      acc = (acc << 6) | v;
+      bits += 6;
+      if (bits >= 8) { bits -= 8; out[o++] = (acc >> bits) & 255; }
+    }
+    return o === out.length ? out : out.subarray(0, o);
+  }
+
+  // Семантика извлечения payload как в Rust: всё между маркерами, все пробелы вон.
+  function locate(text) {
+    var body = stripBom(text);
+    var start = body.indexOf(PAYLOAD_START);
+    if (start < 0) return { body: body, payload: null, reason: 'no_begin' };
+    var after = body.slice(start + PAYLOAD_START.length);
+    var stop = after.indexOf(PAYLOAD_END);
+    if (stop < 0) return { body: body, payload: null, reason: 'no_end' };
+    return { body: body, payload: stripWhitespace(after.slice(0, stop)), reason: null };
+  }
+
+  // Как Rust: последний маркер !SEAL!, первое непробельное слово после него.
+  function sealInFile(body) {
+    var i = body.lastIndexOf(SEAL_MARKER);
+    if (i < 0) return '';
+    var rest = body.slice(i + SEAL_MARKER.length);
+    var m = /\S+/.exec(rest);
+    return m ? m[0] : '';
+  }
+
+  function jsonFromBytes(bytes) {
+    var text;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) {
+      return { ok: false, error: 'payload не является UTF-8' };
+    }
+    try {
+      return { ok: true, value: JSON.parse(text), text: text };
+    } catch (e2) {
+      return { ok: false, error: String(e2 && e2.message ? e2.message : e2), text: text };
+    }
+  }
+
+  /**
+   * verifyText(text, formatVerdict) -> Promise<outcome>
+   * outcome: { intact, kind, detail, payload, payloadBytes, rawJsonText, fileSeal,
+   *            expectedSeal, report, body, bytes, hashEngine }
+   * kind: intact | tampered | no_seal | no_payload | no_payload_end | bad_base64 | bad_json
+   */
+  function verifyText(text, formatVerdict, localOnly) {
+    var base = {
+      intact: false, kind: '', detail: '', payload: null, payloadBytes: null,
+      rawJsonText: null, fileSeal: '', expectedSeal: '', report: null, body: '', bytes: null
+    };
+    var loc = locate(text);
+    base.body = loc.body;
+    if (loc.reason === 'no_begin') {
+      base.kind = 'no_payload'; base.detail = MSG.noBegin;
+      return Promise.resolve(base);
+    }
+    if (loc.reason === 'no_end') {
+      base.kind = 'no_payload_end'; base.detail = MSG.noEnd;
+      return Promise.resolve(base);
+    }
+    base.payload = loc.payload;
+    base.bytes = decodeBase64Strict(loc.payload);
+    if (!base.bytes) {
+      base.kind = 'bad_base64'; base.detail = MSG.badBase64;
+      return Promise.resolve(base);
+    }
+    var parsed = jsonFromBytes(base.bytes);
+    if (!parsed.ok) {
+      base.kind = 'bad_json';
+      base.detail = MSG.badJsonPrefix + parsed.error;
+      base.rawJsonText = parsed.text || null;
+      return Promise.resolve(base);
+    }
+    base.report = parsed.value;
+    base.rawJsonText = parsed.text;
+    base.fileSeal = sealInFile(loc.body);
+
+    return sealFor(loc.payload, localOnly).then(function (expected) {
+      base.expectedSeal = expected;
+      base.hashEngine = localOnly ? 'local-sha256' : (subtleAvailable() ? 'webcrypto' : 'local-sha256');
+      if (!base.fileSeal) {
+        base.kind = 'no_seal'; base.detail = MSG.noSeal;
+        return base;
+      }
+      if (base.fileSeal !== expected) {
+        base.kind = 'tampered';
+        base.detail = MSG.sealMismatch(base.fileSeal, expected);
+        return base;
+      }
+      var ru = formatVerdict ? formatVerdict(base.report) : '';
+      base.intact = true;
+      base.kind = 'intact';
+      base.detail = MSG.intact(base.report.id, ru);
+      return base;
+    });
+  }
+
+  global.SWCC_CORE = {
+    WIDTH: WIDTH,
+    PAYLOAD_START: PAYLOAD_START,
+    PAYLOAD_END: PAYLOAD_END,
+    SEAL_MARKER: SEAL_MARKER,
+    SEAL_SALT: SEAL_SALT,
+    MSG: MSG,
+    stripBom: stripBom,
+    stripWhitespace: stripWhitespace,
+    toHex: toHex,
+    sha256Local: sha256Local,
+    sha256: sha256,
+    sealFor: sealFor,
+    sealFromDigest: sealFromDigest,
+    subtleAvailable: subtleAvailable,
+    decodeBase64Strict: decodeBase64Strict,
+    locate: locate,
+    sealInFile: sealInFile,
+    verifyText: verifyText
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : window);
+</script>
+
+<!-- ==========================================================================
+     Интерфейс.
+     ========================================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  var CORE = globalThis.SWCC_CORE;
+
+  /* ------------------------------------------------------------------ словари
+     Значения полей приходят из serde-сериализации; подписи — из ru() методов
+     src/scanner.rs и src/signatures.rs, чтобы сайт и программа говорили одинаково. */
+
+  var VERDICT_RU = {
+    no_data: 'Данных нет',
+    clean: 'Признаков не найдено',
+    low_signal: 'Косвенные признаки',
+    suspicious: 'Подозрение',
+    high_risk: 'Высокий риск'
+  };
+  var VERDICT_ADVICE = {
+    no_data: 'Сканирование не выполнено: не найдено ни одной папки игры, либо процесс прерван.',
+    clean: 'Автоматических признаков не найдено. Это НЕ гарантия честной игры: база знает ограниченное число ' +
+      'клиентов, а кастомный пересобранный чит она не увидит.',
+    low_signal: 'Совпадения слабые или единичные. Бан по такому отчёту не обоснован.',
+    suspicious: 'Нужна ручная проверка: запроси файлы по хэшам и сравни с официальными релизами.',
+    high_risk: 'Несколько независимых признаков одного семейства либо критическое совпадение по хэшу. ' +
+      'Вероятность чит-клиента высокая - проверяй хэши перед решением.'
+  };
+  var VERDICT_TONE = {
+    no_data: 'info', clean: 'clean', low_signal: 'medium', suspicious: 'high', high_risk: 'critical'
+  };
+
+  var SEVERITY_RU = {
+    info: 'информация', low: 'низкая', medium: 'средняя', high: 'высокая', critical: 'критическая'
+  };
+  var SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
+  var SEVERITY_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
+
+  var KIND_RU = {
+    cheat_client: 'чит-клиент',
+    autoclicker: 'автокликер',
+    xray: 'x-ray',
+    macro: 'макрос',
+    injection: 'инъекция/агент',
+    cracked_launcher: 'обход лицензии',
+    grey_helper: 'серый помощник',
+    config_leftover: 'остаточный конфиг',
+    other: 'прочее'
+  };
+
+  // RuleKind сериализуется без rename_all — варианты с большой буквы.
+  var RULE_RU = {
+    FileName: 'имя файла',
+    FilePath: 'путь файла',
+    Directory: 'каталог',
+    RawBytes: 'строка в байтах файла',
+    ArchiveEntry: 'запись внутри архива',
+    ArchiveContent: 'содержимое архива',
+    TextContent: 'содержимое текста',
+    LaunchLog: 'лог запуска',
+    KnownHash: 'совпал известный хэш'
+  };
+
+  var ROOT_KIND_RU = {
+    standard: 'стандартная',
+    launcher_instance: 'инстанс лаунчера',
+    manual: 'выбрана вручную'
+  };
+
+  var CHECK_MEMO = [
+    'Отчёт - повод для проверки, а не доказательство. Бан только по заключению сканера обосновать нельзя.',
+    'Сверь SHA-256 названных файлов с официальными релизами модов: пересобранный jar под именем легитимного мода - главный приём маскировки.',
+    'Запроси у игрока сам файл (или ссылку на его публичный релиз) и путь к нему;совпадение пути в отчёте и присланного файла подтверждает находку.',
+    'Смотри время изменения файлов: чит, скачанный за минуты до забан-события, и мод, установленный месяц назад, - это разные ситуации.',
+    'Обнови базу сигнатур (signatures/custom.toml) при появлении нового клиента: встроенная база знает ограниченное число клиентов.',
+    'Остаточный конфиг или удалённый клиент не оправдание: проверяй логи поведения на сервере.'
+  ];
+  var LIMIT_MEMO = [
+    'Сканер ищет файлы по известным сигнатурам. Самописный или пересобранный чит он может не увидеть: чистый отчёт не равен честной игре.',
+    'Ложные срабатывания возможны: совпадение имени или строки в легитимном моде - не чит. Поэтому у каждой находки указан признак и уверенность.',
+    'Отчёт формируется на машине игрока, которую он контролирует. Печать ниже ловит случайную правку и повреждение файла, но не подделку: ключ печати находится в той же программе, что и у игрока.',
+    'Отсюда вывод: решение принимай по совокупности - отчёт + запрошенные файлы по хэшам + серверные логи поведения.'
+  ];
+
+  /* --------------------------------------------------------------------- утилиты */
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function push(parent) {
+    for (var i = 1; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c === null || c === undefined || c === false) continue;
+      parent.append(c);
+    }
+    return parent;
+  }
+  function $(id) { return document.getElementById(id); }
+
+  function ru(dict, key, fallback) {
+    if (key === null || key === undefined) return fallback !== undefined ? fallback : '—';
+    return dict[key] !== undefined ? dict[key] : String(key);
+  }
+
+  function fmtInt(v) {
+    if (v === null || v === undefined) return '—';
+    var n = Number(v);
+    if (!isFinite(n)) return String(v);
+    return n.toLocaleString('ru-RU');
+  }
+  /* Русское согласование числительных: 1 файл / 2 файла / 5 файлов. */
+  function plural(n, one, few, many) {
+    var x = Math.abs(Math.round(Number(n)));
+    if (!isFinite(x)) return fmtInt(n);
+    var d1 = x % 10, d2 = x % 100;
+    var word = (d1 === 1 && d2 !== 11) ? one
+      : (d1 >= 2 && d1 <= 4 && !(d2 >= 12 && d2 <= 14)) ? few : many;
+    return fmtInt(x) + ' ' + word;
+  }
+  function fmtBytes(v) {
+    if (v === null || v === undefined) return '—';
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    if (n < 1024) return fmtInt(n) + ' Б';
+    var units = ['КБ', 'МБ', 'ГБ', 'ТБ'], u = -1, x = n;
+    do { x /= 1024; u++; } while (x >= 1024 && u < units.length - 1);
+    return x.toLocaleString('ru-RU', { maximumFractionDigits: x < 10 ? 2 : 1 }) + ' ' + units[u] +
+      ' (' + fmtInt(n) + ' Б)';
+  }
+  function fmtPct(conf) {
+    var n = Number(conf);
+    if (!isFinite(n)) return '—';
+    return Math.round(n * 100) + '%';
+  }
+
+  var ISO_RE = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?([+\-]\d{2}:?\d{2}|Z)?/;
+  // Разбираем RFC3339 сам: наносекунды из Rust Date.parse в браузере не переваривает,
+  // а смещение в часовом поясе админа исказило бы метку. Поэтому:
+  //   ms  — абсолютный момент (для разницы «сколько назад»),
+  //   поля —Components метки как они записаны (для показа).
+  function parseInstant(s) {
+    if (typeof s !== 'string') return null;
+    var m = ISO_RE.exec(s);
+    if (!m) return null;
+    var tz = m[8];
+    var offMin = 0;
+    if (tz && tz !== 'Z') {
+      var sign = tz.charAt(0) === '-' ? -1 : 1;
+      var digits = tz.slice(1).replace(':', '');
+      offMin = sign * (parseInt(digits.slice(0, 2), 10) * 60 + parseInt(digits.slice(2, 4), 10));
+    }
+    var ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6],
+      m[7] ? Math.round(parseFloat('0.' + m[7]) * 1000) : 0);
+    if (!isFinite(ms)) return null;
+    return {
+      ms: ms - offMin * 60000,
+      offset: tz || '',
+      y: +m[1], mo: +m[2], d: +m[3], hh: +m[4], mm: +m[5], ss: +m[6],
+      raw: s
+    };
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  // Показываем метку ровно в том поясе, в котором её записала программа,
+  // и подписываем это смещение: у админа может быть другой пояс.
+  function fmtInstant(s) {
+    var p = parseInstant(s);
+    if (!p) return s ? String(s) : '—';
+    return pad2(p.d) + '.' + pad2(p.mo) + '.' + p.y + ' ' +
+      pad2(p.hh) + ':' + pad2(p.mm) + ':' + pad2(p.ss) +
+      ' · пояс отчёта ' + (p.offset && p.offset !== 'Z' ? p.offset : 'UTC');
+  }
+  function fmtAge(s) {
+    var p = parseInstant(s);
+    if (!p) return null;
+    var diff = Date.now() - p.ms;
+    var abs = Math.abs(diff);
+    var min = 60000, hour = 3600000, day = 86400000;
+    var txt;
+    if (abs < min) txt = 'меньше минуты';
+    else if (abs < hour) txt = Math.round(abs / min) + ' мин';
+    else if (abs < day) txt = Math.round(abs / hour) + ' ч';
+    else if (abs < day * 31) txt = Math.round(abs / day) + ' сут';
+    else txt = Math.round(abs / (day * 30.44)) + ' мес';
+    if (diff < 0) return { text: 'метка в будущем на ' + txt, bad: true };
+    return { text: txt + ' назад', bad: false };
+  }
+
+  function toast(msg) {
+    var t = $('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    if (toast.timer) clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () { t.classList.remove('show'); }, 2100);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return legacyCopy(text); });
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+  function legacyCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      var ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) {
+      return false;
+    }
+  }
+  function copyButton(label, value, cls) {
+    var b = el('button', 'copy ' + (cls || ''), label);
+    b.type = 'button';
+    b.title = 'Скопировать';
+    b.setAttribute('aria-label', label + ' — скопировать');
+    b.addEventListener('click', function () {
+      copyText(value).then(function (ok) {
+        if (ok) {
+          b.classList.add('done');
+          toast('Скопировано: ' + (value.length > 46 ? value.slice(0, 43) + '…' : value));
+          setTimeout(function () { b.classList.remove('done'); }, 1200);
+        } else {
+          toast('Браузер не дал буфер обмена — выдели и скопируй вручную');
+        }
+      });
+    });
+    return b;
+  }
+
+  /* ---------------------------------------------------------------------- доступ
+     Только чтение: ни fetch, ни XHR, ни form. Файл идёт в FileReader -> память вкладки. */
+
+  function readFileText(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result)); };
+      fr.onerror = function () { reject(new Error('Файл не прочитан: ' + (file && file.name ? file.name : '?'))); };
+      try {
+        fr.readAsText(file, 'utf-8'); // TextDecoder снимает BOM; на всякий случай stripBom в CORE
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  var state = {
+    items: [],       // {id, name, size, text, outcome, error}
+    active: -1,
+    filter: { q: '', family: '', min: 'info' },
+    rawMode: 'pretty'
+  };
+  var seq = 0;
+
+  function verdictRuFromReport(report) {
+    var v = report && report.result ? report.result.verdict : null;
+    return ru(VERDICT_RU, v, v ? String(v) : 'без заключения');
+  }
+
+  function intakeError(msg) {
+    var box = $('intake-err');
+    if (!msg) { box.hidden = true; box.textContent = ''; return; }
+    box.hidden = false;
+    box.textContent = msg;
+  }
+
+  function addFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    intakeError(null);
+    var jobs = list.map(function (file) {
+      return readFileText(file).then(function (text) {
+        return { name: file.name || '(без имени)', size: file.size || text.length, text: text };
+      }, function (err) {
+        return { name: file.name || '(без имени)', size: 0, text: null, error: String(err && err.message ? err.message : err) };
+      });
+    });
+    Promise.all(jobs).then(function (loaded) {
+      loaded.forEach(function (item) {
+        seq += 1;
+        var entry = { id: seq, name: item.name, size: item.size, text: item.text, outcome: null, error: item.error || null };
+        state.items.push(entry);
+        state.active = state.items.length - 1;
+      });
+      return resolveAll().then(render);
+    }).catch(function (err) {
+      intakeError('Не получилось прочитать: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function addText(text, name) {
+    seq += 1;
+    state.items.push({ id: seq, name: name || 'текст из буфера', size: text.length, text: text, outcome: null, error: null });
+    state.active = state.items.length - 1;
+    return resolveAll().then(render);
+  }
+
+  function resolveAll() {
+    var chain = Promise.resolve();
+    state.items.forEach(function (item) {
+      if (item.error || !item.text) return;
+      if (item.outcome && item.outcome.resolved) return;
+      chain = chain.then(function () {
+        return CORE.verifyText(item.text, verdictRuFromReport).then(function (outcome) {
+          outcome.resolved = true;
+          item.outcome = outcome;
+        }, function (err) {
+          item.outcome = {
+            resolved: true, intact: false, kind: 'bad_json',
+            detail: CORE.MSG.badJsonPrefix + (err && err.message ? err.message : err),
+            report: null, payload: null, fileSeal: '', expectedSeal: '', body: item.text
+          };
+        });
+      });
+    });
+    return chain;
+  }
+
+  function activeItem() {
+    return state.active >= 0 && state.active < state.items.length ? state.items[state.active] : null;
+  }
+
+  /* ------------------------------------------------------------------ рендер рамок */
+
+  function render() {
+    renderTabs();
+    var work = $('work');
+    work.textContent = '';
+    var item = activeItem();
+    if (!item) {
+      work.append(idleCard());
+      return;
+    }
+    if (item.error) {
+      work.append(el('div', 'err', 'Файл не прочитан: ' + item.error));
+      return;
+    }
+    var out = item.outcome;
+    if (!out) { work.append(idleCard('Идёт разбор файла…')); return; }
+
+    work.append(bannerCard(item, out));
+    if (out.report) {
+      var report = out.report;
+      work.append(verdictCard(report, out));
+      work.append(rootsCard(report));
+      work.append(familiesCard(report));
+      work.append(statsCard(report));
+      work.append(findingsCard(report));
+      work.append(suppressedCard(report));
+      work.append(inventoryCard(report));
+      work.append(warningsCard(report));
+    } else {
+      work.append(noPayloadCard(out));
+    }
+    work.append(humanCard(item, out));
+    work.append(rawCard(out));
+  }
+
+  function idleCard(msg) {
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Отчёт не загружен'));
+    c.append(el('p', 'side-note', msg ||
+      'Сканер игрока пишет отчёт в файл .swcc и пересылает его тебе сам — на сервер ничего не уходит. ' +
+      'Здесь ты проверяешь присланный файл: целость машинычитаемой части, печать и содержимое находок.'));
+    return c;
+  }
+
+  /* ------------------------------------------------------------------- banner */
+
+  function bannerCard(item, out) {
+    var tone, title, glyph;
+    if (out.intact) { tone = 'ok'; title = 'Печать сходится'; glyph = '✓'; }
+    else if (out.kind === 'no_payload' || out.kind === 'no_payload_end') { tone = 'part'; title = 'Payload не найден'; glyph = '!'; }
+    else if (out.kind === 'no_seal') { tone = 'part'; title = 'Печать в файле отсутствует'; glyph = '!'; }
+    else { tone = 'bad'; title = 'Печать НЕ сходится — файл отредактирован'; glyph = '✕'; }
+
+    var b = el('section', 'banner ' + tone);
+    b.setAttribute('role', 'status');
+    b.setAttribute('aria-live', 'polite');
+    var head = el('div', 'head');
+    push(head, el('div', 'glyph', glyph), (function () {
+      var col = el('div');
+      col.append(el('p', 'title', title));
+      col.append(el('p', 'detail', out.detail));
+      col.append(el('p', 'cli', 'Формулировка совпадает с Report::verify в CLI: ' + out.detail));
+      return col;
+    })());
+    b.append(head);
+
+    var box = el('div', 'sealbox');
+    box.append(sealCell('Печать в файле (!SEAL!)', out.fileSeal || 'нет строки печати', out.intact ? 'ok' : 'bad'));
+    box.append(sealCell('Пересчитано в браузере', out.expectedSeal || 'н/д (payload не разобран)', out.intact ? 'ok' : 'bad'));
+    box.append(sealCell('Payload, длина base64', out.payload ? fmtInt(out.payload.length) + ' симв. (между маркерами, пробелы удалены)' : '—', ''));
+    box.append(sealCell('Реализация SHA-256', engineLabel(out), ''));
+    box.append(sealCell('Соль печати', CORE.SEAL_SALT, ''));
+    box.append(sealCell('Файл', item.name + ' · ' + fmtBytes(item.size), ''));
+    b.append(box);
+
+    var algo = el('p', 'note');
+    algo.textContent = 'Алгоритм: hex( SHA-256( "' + CORE.SEAL_SALT + '" + payload ) )[0..12]. ' +
+      'Печать подтверждает только то, что машиначитаемая часть не менялась после формирования отчёта. ' +
+      'Она не доказывает авторство: соль лежит в программе игрока.';
+    b.append(algo);
+
+    if (!out.intact && out.report) {
+      var w = el('p', 'note bad');
+      w.textContent = 'Payload при этом разобрался: ниже показано содержимое файла così как оно прочитано. ' +
+        'Сверяй с игроком поштучно — такому отчёту доверять нельзя.';
+      b.append(w);
+    }
+    return b;
+  }
+
+  function engineLabel(out) {
+    if (out.hashEngine === 'webcrypto') return 'WebCrypto (crypto.subtle.digest)';
+    if (out.hashEngine === 'local-sha256') {
+      return 'встроенная реализация SHA-256 (crypto.subtle недоступен в этом контексте)';
+    }
+    return CORE.subtleAvailable() ? 'WebCrypto (crypto.subtle.digest)' : 'встроенная реализация SHA-256';
+  }
+
+  function sealCell(k, v, cls) {
+    var cell = el('div', 'sealcell');
+    cell.append(el('div', 'k', k));
+    cell.append(el('div', 'v ' + (cls || ''), v));
+    return cell;
+  }
+
+  function noPayloadCard(out) {
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Разбор'));
+    var p = el('p', 'note bad');
+    if (out.kind === 'bad_base64') {
+      p.textContent = 'Машиночитаемая часть между маркерами есть, но не декодируется как base64. ' +
+        'Обычно это значит, что файл правили текстовым редактором или он обрезался при пересылке.';
+    } else if (out.kind === 'bad_json') {
+      p.textContent = 'Base64 декодировался, но содержимое не является JSON отчёта. ' +
+        'Файл подменён или повреждён. Проверка: ' + out.detail;
+    } else {
+      p.textContent = 'Покажи игроку этот файл целиком и попроси пересохранить отчёт в программе, ' +
+        'а не копировать текст в Discord: в тексте нет машинычитаемой части, её нельзя проверить.';
+    }
+    c.append(p);
+    var pre = el('pre', 'excerpt');
+    pre.textContent = headSnippet(out.body || '', 1400);
+    c.append(el('p', 'note', 'Начало файла (первые 1400 симв.), чтобы понять, что именно пришло:'));
+    c.append(pre);
+    return c;
+  }
+
+  function headSnippet(s, n) {
+    return s.length > n ? s.slice(0, n) + '\n…(дальше не показано)' : s;
+  }
+
+  /* ------------------------------------------------------------------ verdict */
+
+  function verdictCard(report, out) {
+    var res = report.result || {};
+    var tone = VERDICT_TONE[res.verdict] || 'info';
+    var c = el('section', 'card');
+
+    var head = el('div', 'vhead');
+    var left = el('div');
+    left.append(el('h2', 'vbig sev-' + tone, 'Заключение: ' + ru(VERDICT_RU, res.verdict, '—')));
+    left.append(el('div', 'vsub',
+      'Отчёт ' + (report.id || '—') + ' · формат ' + (report.format || '—') +
+      ' · приложение swcc ' + (report.app_version || '—') +
+      ' · база сигнатур ' + (res.db_version || '—')));
+    head.append(left);
+
+    var score = Number(res.score || 0);
+    var sc = el('div', 'score');
+    sc.append(el('div', 'num sev-' + tone, fmtInt(score)));
+    sc.append(el('div', 'lbl', 'балл риска'));
+    head.append(sc);
+    c.append(head);
+
+    var bar = el('div', 'bar');
+    var fill = el('i', 'bg-' + tone);
+    fill.style.width = Math.max(2, Math.min(100, score)) + '%';
+    bar.append(fill);
+    c.append(bar);
+    c.append(el('p', 'note', 'Шкала 0-100+; больше 80 — высокая вероятность. Балл складывается из весов находок ' +
+      'и их уверенности, поэтому он не «процент вины».'));
+
+    var advice = el('p', 'advice');
+    advice.textContent = 'Что это значит: ' + (VERDICT_ADVICE[res.verdict] || 'нет поясствия для этого заключения.');
+    c.append(advice);
+
+    // Разбивка находок — та же, что в counts() у Report::render
+    var findings = res.findings || [];
+    var bySev = {};
+    findings.forEach(function (f) { bySev[f.severity] = (bySev[f.severity] || 0) + 1; });
+    var counts = el('div', 'counts');
+    counts.append(cnt('всего находок', findings.length, null));
+    SEVERITY_LEVELS.forEach(function (s) {
+      counts.append(cnt(SEVERITY_RU[s], bySev[s] || 0, s));
+    });
+    counts.append(cnt('отброшено как легитимное', (res.suppressed || []).length, ''));
+    counts.append(cnt('файлов в mods/addons', (res.mods || []).length, ''));
+    c.append(counts);
+
+    var created = report.created_at;
+    var age = fmtAge(created);
+    var grid = el('div', 'kv');
+    push(grid,
+      kvItem('Время формирования', fmtInstant(created) + (age ? ' · ' + age.text : '')),
+      kvItem('Начало обхода', fmtInstant(res.started_at)),
+      kvItem('Игрок (учётка ПК)', (res.environment && res.environment.user) || '—'),
+      kvItem('Ник из строки запуска', (res.environment && res.environment.nick_from_launch) || 'не определён'),
+      kvItem('ОС / архитектура', (res.environment && res.environment.os) || '—'),
+      kvItem('Часовой пояс', (res.environment && res.environment.timezone) || '—'),
+      kvItem('Версии игры', res.environment && res.environment.mc_versions && res.environment.mc_versions.length
+        ? res.environment.mc_versions.join(', ') : 'не определены'),
+      kvItem('Java из лога', (res.environment && res.environment.java_from_log) || 'не найдено'),
+      kvItem('Загрузчик из лога', (res.environment && res.environment.loader_from_log) || 'не найдено'),
+      kvItem('Согласие игрока', agreementText(report)),
+      kvItem('Глубокая распаковка архивов', report.deep_archives ? 'включена' : 'выключена'),
+      kvItem('Источники базы сигнатур', (res.db_sources || []).join('; ') || '—')
+    );
+    c.append(grid);
+
+    var sent = el('p', 'note');
+    sent.textContent = 'Отправлено на сервер: НЕТ. Отчёт создаётся локально и никуда не уходит; ' +
+      'игрок пересылает файл сам.';
+    c.append(sent);
+
+    if (!out.intact) {
+      var warn = el('p', 'note bad');
+      warn.textContent = 'Внимание: печать не подтверждена — всё ниже прочитано из файла, которому нельзя доверять.';
+      c.append(warn);
+    }
+    return c;
+  }
+
+  function cnt(label, n, sev) {
+    var b = el('span', 'cnt');
+    b.append(el('span', null, label + ' '));
+    b.append(el('b', sev ? 'sev-' + sev : null, fmtInt(n)));
+    return b;
+  }
+  function kvItem(k, v, cls) {
+    var i = el('div', 'kv-item');
+    i.append(el('div', 'kv-k', k));
+    i.append(el('div', 'kv-v ' + (cls || ''), v === '' || v === null || v === undefined ? '—' : v));
+    return i;
+  }
+  function agreementText(report) {
+    var a = report.agreement || {};
+    if (a.accepted === true) {
+      return 'принято ' + fmtInstant(a.accepted_at) + ' (текст ' + (a.text_version || '—') + ')';
+    }
+    if (a.accepted === false) return 'НЕ принято — проверка не выполнялась';
+    return a.accepted === undefined ? '—' : 'нет записи о согласии';
+  }
+
+  /* -------------------------------------------------------------------- roots */
+
+  function rootsCard(report) {
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Что сканировалось'));
+    var roots = report.roots || [];
+    if (!roots.length) {
+      c.append(el('p', 'empty', 'Ни одна папка игры не найдена — проверка не выполнялась.'));
+      return c;
+    }
+    var list = el('ul', 'ticks');
+    roots.forEach(function (r) {
+      var li = el('li', 'mono');
+      li.append(el('span', 't', '▪'));
+      var body = el('span', 'b');
+      body.textContent = '[' + ru(ROOT_KIND_RU, r.kind, r.kind || '—') + '] ' + (r.label || '—') + ' — ' + (r.path || '—');
+      li.append(body);
+      list.append(li);
+    });
+    c.append(list);
+    c.append(el('p', 'note', 'Исключены из обхода: assets, libraries, runtime, bin, каталоги нативок ' +
+      '(легитимные и огромные).'));
+    return c;
+  }
+
+  /* ----------------------------------------------------------------- families */
+
+  function familiesCard(report) {
+    var fams = (report.result && report.result.families) || [];
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Семейства'));
+    c.append(el('p', 'hint', 'Группировка находок по семейству: подтверждение несколькими независимыми файлами ' +
+      'весомее одиночного совпадения.'));
+    if (!fams.length) { c.append(el('p', 'empty', 'Ни одного семейства.')); return c; }
+    var sorted = fams.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
+    var tbl = el('div', 'tbl-scroll');
+    var t = el('table');
+    var thead = el('thead');
+    var hrow = el('tr');
+    ['Семейство', 'Тип', 'Уровень', 'Находок', 'Файлов', 'Подтверждено', 'Вклад', 'Макс. уверенность'].forEach(function (x) {
+      hrow.append(el('th', null, x));
+    });
+    thead.append(hrow);
+    t.append(thead);
+    var tb = el('tbody');
+    sorted.forEach(function (f) {
+      var tr = el('tr');
+      var sev = f.severity in SEVERITY_RU ? f.severity : 'info';
+      var sevCell = el('td');
+      sevCell.append(el('span', 'sev-' + sev, SEVERITY_RU[sev]));
+      push(tr,
+        td(f.family || '—', 'p'),
+        td(ru(KIND_RU, f.kind)),
+        sevCell,
+        tdNum(f.findings), tdNum(f.distinct_files),
+        td(f.corroborated ? 'да — несколько независимых' : 'нет'),
+        tdNum(f.score),
+        tdNum(fmtPct(f.max_confidence))
+      );
+      tb.append(tr);
+    });
+    t.append(tb);
+    tbl.append(t);
+    c.append(tbl);
+    return c;
+  }
+  function td(value, cls) {
+    var d = el('td', cls || null);
+    d.textContent = value === null || value === undefined ? '—' : String(value);
+    return d;
+  }
+  function tdNum(v) { return el('td', 'num', fmtInt(v)); }
+
+  /* -------------------------------------------------------------------- stats */
+
+  function statsCard(report) {
+    var st = (report.result && report.result.stats) || {};
+    var c = el('section', 'card');
+    c.append(el('h2', null, 'Статистика обхода и пределы'));
+    var grid = el('div', 'kv');
+    push(grid,
+      kvItem('Файлов просмотрено', fmtInt(st.files_walked)),
+      kvItem('Каталогов пройдено', fmtInt(st.dirs_walked)),
+      kvItem('Прочитано байт', fmtBytes(st.bytes_read)),
+      kvItem('Архивов открыто', fmtInt(st.archives_opened)),
+      kvItem('Архивов распаковано глубоко', fmtInt(st.archives_deep_scanned)),
+      kvItem('Архивов пропущено по бюджету', fmtInt(st.archives_skipped_by_budget)),
+      kvItem('SHA-256 вычислено', plural(st.files_hashed, 'файл', 'файла', 'файлов') + ', ' + fmtInt(Math.round((st.hash_bytes || 0) / 1048576)) + ' МБ'),
+      kvItem('Файлов слишком больших', fmtInt(st.files_too_large)),
+      kvItem('Файлов не читалось', fmtInt(st.files_unreadable)),
+      kvItem('Симлинков пропущено', fmtInt(st.symlinks_skipped)),
+      kvItem('Отброшено как легитимное', plural(st.suppressed, 'совпадение', 'совпадения', 'совпадений')),
+      kvItem('Длительность', fmtInt(st.duration_ms) + ' мс')
+    );
+    c.append(grid);
+
+    var flags = [];
+    if (st.walk_limited) flags.push('ВНИМАНИЕ: обход достиг лимита числа файлов — часть файлов не проверена.');
+    if (st.aborted) flags.push('ВНИМАНИЕ: проверка прервана пользователем — вывод неполный.');
+    if ((st.archives_skipped_by_budget || 0) > 0) {
+      flags.push('Архивов не распаковано из-за бюджета: ' + fmtInt(st.archives_skipped_by_budget) +
+        ' — содержимое этих архивов не проверялось.');
+    }
+    if ((st.files_too_large || 0) > 0 || (st.files_unreadable || 0) > 0) {
+      flags.push('Часть файлов не хэшировалась (слишком большие или не читались): ' +
+        fmtInt(st.files_too_large) + ' + ' + fmtInt(st.files_unreadable) + ' — по хэшу они не опознаны.');
+    }
+    if (!flags.length) {
+      c.append(el('p', 'note', 'Лимиты обхода и бюджеты не достигнуты: проверено всё, что нашлось в корнях.'));
+    } else {
+      var ul = el('ul', 'ticks');
+      flags.forEach(function (f) {
+        var li = el('li');
+        li.append(el('span', 't sev-medium', '⚠'));
+        li.append(el('span', 'b', f));
+        ul.append(li);
+      });
+      c.append(ul);
+      c.append(el('p', 'note warn', 'Неполный обход — это не «чисто»: это «не досмотрено».'));
+    }
+    return c;
+  }
+
+  /* ----------------------------------------------------------------- findings */
+
+  function findingsCard(report) {
+    var all = (report.result && report.result.findings) || [];
+    var c = el('section', 'card');
+    var title = el('h2');
+    title.append(el('span', null, 'Находки'));
+    var titleCount = el('span', 'n', '0 из ' + all.length);
+    title.append(titleCount);
+    c.append(title);
+
+    var fams = [];
+    var seen = {};
+    all.forEach(function (f) {
+      var k = f.family || '—';
+      if (!seen[k]) { seen[k] = 1; fams.push(k); }
+    });
+    fams.sort();
+
+    var filters = el('div', 'filters');
+    var qField = el('div', 'fld');
+    var qLabel = el('label', null, 'Поиск по подстроке');
+    var q = el('input');
+    q.type = 'search';
+    q.id = 'f-q';
+    q.placeholder = 'ник, Meteor, mods/, хэш…';
+    q.setAttribute('aria-label', qLabel.textContent);
+    q.value = state.filter.q;
+    push(qField, qLabel, q);
+
+    var minField = el('div', 'fld');
+    var minLabel = el('label', null, 'Уровень не ниже');
+    var min = el('select');
+    min.id = 'f-min';
+    [['info', 'все'], ['low', 'низкая'], ['medium', 'средняя'], ['high', 'высокая'], ['critical', 'критическая']]
+      .forEach(function (pair) {
+        var o = el('option', null, pair[1]);
+        o.value = pair[0];
+        if (state.filter.min === pair[0]) o.selected = true;
+        min.append(o);
+      });
+    minLabel.setAttribute('for', 'f-min');
+    push(minField, minLabel, min);
+
+    var famField = el('div', 'fld');
+    var famLabel = el('label', null, 'Семейство');
+    var fam = el('select');
+    fam.id = 'f-fam';
+    var any = el('option', null, 'любое');
+    any.value = '';
+    fam.append(any);
+    fams.forEach(function (name) {
+      var o = el('option', null, name);
+      o.value = name;
+      if (state.filter.family === name) o.selected = true;
+      fam.append(o);
+    });
+    famLabel.setAttribute('for', 'f-fam');
+    push(famField, famLabel, fam);
+
+    var shown = el('div', 'shown', '');
+    var reset = el('button', 'btn sm ghost', 'Сбросить');
+    reset.type = 'button';
+    reset.addEventListener('click', function () {
+      state.filter = { q: '', family: '', min: 'info' };
+      q.value = ''; fam.value = ''; min.value = 'info';
+      apply();
+    });
+    push(filters, qField, minField, famField, reset, shown);
+    c.append(filters);
+    c.append(el('p', 'hint', 'Как и запрос в программе (scanner::query): подстрока ищется по семейству, сигнатуре, ' +
+      'пути, сути, способу проверки, типу и уровню, плюс по признакам и хэшам.'));
+
+    var list = el('div', 'findings');
+    list.id = 'f-list';
+    list.setAttribute('role', 'list');
+    c.append(list);
+
+    function apply() {
+      state.filter.q = q.value;
+      state.filter.min = min.value;
+      state.filter.family = fam.value;
+      var kept = all.filter(function (f) {
+        if (rankOf(f.severity) < rankOf(state.filter.min)) return false;
+        if (state.filter.family && (f.family || '—') !== state.filter.family) return false;
+        return matchesQuery(f, state.filter.q);
+      });
+      // порядок как в Report::render: уровень, затем уверенность
+      kept.sort(function (a, b) {
+        var d = rankOf(b.severity) - rankOf(a.severity);
+        if (d) return d;
+        return (Number(b.confidence) || 0) - (Number(a.confidence) || 0);
+      });
+      list.textContent = '';
+      if (!kept.length) {
+        list.append(el('p', 'empty', all.length
+          ? 'Под фильтр не попала ни одна находка.'
+          : 'Ни одной находки. См. «Пределы метода»: чистый отчёт не равен честной игре.'));
+      } else {
+        kept.forEach(function (f, i) { list.append(findingCard(f, i + 1)); });
+      }
+      titleCount.textContent = kept.length + ' из ' + all.length;
+      shown.textContent = 'показано ' + kept.length + ' из ' + all.length;
+    }
+
+    q.addEventListener('input', apply);
+    min.addEventListener('change', apply);
+    fam.addEventListener('change', apply);
+    apply();
+    return c;
+  }
+
+  function rankOf(sev) {
+    var r = SEVERITY_RANK[sev];
+    return r === undefined ? 0 : r;
+  }
+
+  function matchesQuery(f, raw) {
+    var needle = String(raw || '').trim().toLowerCase();
+    if (!needle) return true;
+    var hay = [
+      f.family, f.sig_id, locationOf(f), f.explain, f.verify,
+      ru(KIND_RU, f.kind), SEVERITY_RU[f.severity] || String(f.severity || '')
+    ];
+    var ev = f.evidence || {};
+    if (ev.sha256) hay.push(ev.sha256);
+    if (ev.root) hay.push(ev.root);
+    if (ev.source) hay.push(ev.source);
+    if (ev.referenced_file) hay.push(ev.referenced_file);
+    (f.rules || []).forEach(function (r) {
+      hay.push(r.detail);
+      hay.push(RULE_RU[r.rule] || r.rule);
+    });
+    for (var i = 0; i < hay.length; i++) {
+      if (hay[i] && String(hay[i]).toLowerCase().indexOf(needle) >= 0) return true;
+    }
+    return false;
+  }
+
+  function locationOf(f) {
+    var ev = f.evidence || {};
+    if (ev.type === 'file' || (ev.rel_path !== undefined && ev.size_bytes !== undefined)) return ev.rel_path || '';
+    if (ev.type === 'directory') return (ev.rel_path || '') + '/';
+    if (ev.type === 'launch_line') return ev.source || '';
+    return ev.rel_path || ev.source || '';
+  }
+
+  function findingCard(f, index) {
+    var sev = f.severity in SEVERITY_RU ? f.severity : 'info';
+    var c = el('article', 'fcard sev-' + sev);
+    c.setAttribute('role', 'listitem');
+
+    var head = el('div', 'fhead');
+    head.append(el('span', 'fid', '[F-' + pad2(index) + ']'));
+    head.append(el('span', 'badge sev-' + sev, SEVERITY_RU[sev]));
+    head.append(el('span', 'ffam', f.family || '—'));
+    head.append(el('span', 'fkind', ru(KIND_RU, f.kind)));
+    head.append(el('span', 'fsig', f.sig_id || '—'));
+    var meta = el('div', 'fmeta');
+    meta.append(el('span', 'pill', 'уверенность ' + fmtPct(f.confidence)));
+    meta.append(el('span', 'pill', 'вес ' + fmtInt(f.weight)));
+    var eff = Math.round((Number(f.weight) || 0) * (Number(f.confidence) || 0));
+    meta.append(el('span', 'pill', 'вклад ' + fmtInt(eff)));
+    head.append(meta);
+    c.append(head);
+
+    var body = el('div', 'fbody');
+    var ev = f.evidence || {};
+    if (ev.type === 'file' || (typeof ev.rel_path === 'string' && typeof ev.size_bytes !== 'undefined')) {
+      body.append(cell('Файл', ev.rel_path, 'mono'));
+      body.append(cell('Где', ev.root));
+      body.append(cell('Размер', fmtBytes(ev.size_bytes)));
+      body.append(mtimeCell(ev.modified));
+      body.append(hashCell(ev.sha256));
+    } else if (ev.type === 'directory' || (typeof ev.rel_path === 'string' && typeof ev.size_bytes === 'undefined')) {
+      body.append(cell('Каталог', (ev.rel_path || '') + '/', 'mono'));
+      body.append(cell('Где', ev.root));
+    } else if (ev.type === 'launch_line') {
+      body.append(cell('Источник', ev.source, 'mono'));
+      if (ev.referenced_file) body.append(cell('Названный файл', ev.referenced_file, 'mono'));
+    } else if (ev.type) {
+      body.append(cell('Доказательство', 'неизвестный тип: ' + ev.type, 'mono'));
+    }
+    c.append(body);
+
+    if (ev.type === 'launch_line') {
+      var block = el('div', 'prose');
+      var wrap = el('div');
+      wrap.append(el('div', 'pk', 'Строка запуска'));
+      var pre = el('pre', 'excerpt');
+      pre.textContent = ev.excerpt || '';
+      wrap.append(pre);
+      block.append(wrap);
+      c.append(block);
+    }
+
+    var rules = f.rules || [];
+    if (rules.length) {
+      c.append(el('div', 'sub-k', 'Признаки:'));
+      var rl = el('ul', 'rules');
+      rules.forEach(function (r) {
+        var li = el('li');
+        li.append(el('span', 'rk', RULE_RU[r.rule] || r.rule || '—'));
+        var detail = el('span', 'rd');
+        detail.textContent = String(r.detail || '').slice(0, 400);
+        li.append(detail);
+        if (typeof r.confidence === 'number') li.append(el('span', 'rc', fmtPct(r.confidence)));
+        rl.append(li);
+      });
+      c.append(rl);
+    }
+
+    var prose = el('div', 'prose');
+    if (f.explain) prose.append(proseBlock('Суть', f.explain, ''));
+    if (f.verify) prose.append(proseBlock('Как проверить', f.verify, 'verify'));
+    if (prose.childNodes.length) c.append(prose);
+    return c;
+  }
+
+  function cell(k, v, cls) {
+    var d = el('div', 'fcell');
+    d.append(el('div', 'k', k));
+    var val = el('div', 'v ' + (cls || ''));
+    val.textContent = (v === null || v === undefined || v === '') ? '—' : String(v);
+    d.append(val);
+    return d;
+  }
+
+  function mtimeCell(m) {
+    var d = el('div', 'fcell');
+    d.append(el('div', 'k', 'Изменён'));
+    var val = el('div', 'v mono');
+    var age = fmtAge(m);
+    val.textContent = m ? fmtInstant(m) : '—';
+    d.append(val);
+    if (age) {
+      var sub = el('div', 'v ' + (age.bad ? 'sev-critical' : ''));
+      sub.style.fontSize = '11.5px';
+      sub.textContent = age.text;
+      d.append(sub);
+    }
+    return d;
+  }
+
+  function hashCell(h) {
+    var d = el('div', 'fcell');
+    d.style.gridColumn = '1 / -1';
+    d.append(el('div', 'k', 'SHA-256'));
+    if (h) {
+      d.append(copyButton(String(h), String(h)));
+      var tip = el('div', 'v');
+      tip.style.color = 'var(--dim)';
+      tip.style.fontSize = '11.5px';
+      tip.style.marginTop = '3px';
+      tip.textContent = 'Клик — скопировать. Сверь с официальным релизом: пересобранный jar под именем ' +
+        'легитимного мода — главный приём маскировки.';
+      d.append(tip);
+    } else {
+      var v = el('div', 'v');
+      v.textContent = 'не вычислен (вне бюджета или слишком большой)';
+      v.style.color = 'var(--dim)';
+      d.append(v);
+    }
+    return d;
+  }
+
+  function proseBlock(k, t, cls) {
+    var d = el('div');
+    d.append(el('div', 'pk', k));
+    var body = el('div', 'pt ' + (cls || ''));
+    body.textContent = t;
+    d.append(body);
+    return d;
+  }
+
+  /* --------------------------------------------------------------- suppressed */
+
+  function suppressedCard(report) {
+    var list = (report.result && report.result.suppressed) || [];
+    var c = el('section', 'card');
+    var h = el('h2');
+    h.append(el('span', null, 'Отброшено как легитимное'));
+    h.append(el('span', 'n', String(list.length)));
+    c.append(h);
+    c.append(el('p', 'hint', 'Совпадение с сигнатурой, которое правило-исключение признало легитимным. ' +
+      'Показываем, чтобы админ видел, что именно сканер «спустил».'));
+    if (!list.length) { c.append(el('p', 'empty', 'Нет.')); return c; }
+    var wrap = el('ul', 'ticks');
+    list.forEach(function (s) {
+      var li = el('li', 'mono');
+      li.append(el('span', 't', '▪'));
+      var b = el('span', 'b');
+      b.textContent = (s.sig_id || '—') + ' -> ' + (s.path || '—');
+      li.append(b);
+      var why = el('span', 'b');
+      why.style.color = 'var(--muted)';
+      why.textContent = '  (' + (s.by || '—') + ')';
+      li.append(why);
+      wrap.append(li);
+    });
+    c.append(wrap);
+    return c;
+  }
+
+  /* ------------------------------------------------------------- inventory */
+
+  function inventoryCard(report) {
+    var res = report.result || {};
+    var c = el('section', 'card');
+    var mods = res.mods || [], packs = res.resource_packs || [];
+    var h = el('h2');
+    h.append(el('span', null, 'Инвентарь'));
+    h.append(el('span', 'n', mods.length + ' mods · ' + packs.length + ' ресурспаков'));
+    c.append(h);
+    if (!mods.length && !packs.length) {
+      c.append(el('p', 'empty', 'Папок mods не найдено или они пусты.'));
+      return c;
+    }
+    if (mods.length) c.append(inventoryTable('Файлы в mods/addons (в порядке обхода)', mods));
+    if (packs.length) {
+      c.append(el('div', 'note', 'Ресурспаки:'));
+      c.append(inventoryTable('Ресурспаки', packs, true));
+    }
+    c.append(el('p', 'note', 'Хэш null означает «не вычислен»: файл больше бюджета хэширования или не читался. ' +
+      'Отсутствие хэша — не «чисто», а «не проверено по хэшу».'));
+    return c;
+  }
+
+  function inventoryTable(caption, entries, noHash) {
+    var wrap = el('div', 'tbl-scroll');
+    var t = el('table');
+    var head = el('tr');
+    ['Название', 'Путь', 'Размер', 'SHA-256'].forEach(function (x) { head.append(el('th', null, x)); });
+    var thead = el('thead');
+    thead.append(head);
+    t.append(thead);
+    var tb = el('tbody');
+    entries.forEach(function (m) {
+      var tr = el('tr');
+      tr.append(el('td', null, m.name || '—'));
+      tr.append(el('td', 'p', m.rel_path || '—'));
+      tr.append(el('td', 'num', fmtBytes(m.size_bytes)));
+      var hc = el('td');
+      if (m.sha256) hc.append(copyButton(String(m.sha256), String(m.sha256)));
+      else hc.append(el('span', 'mono', noHash ? 'не вычислен' : 'хэш не вычислен'));
+      tr.append(hc);
+      tb.append(tr);
+    });
+    t.append(tb);
+    t.prepend(el('caption', null, caption + ' — ' + entries.length));
+    wrap.append(t);
+    return wrap;
+  }
+
+  /* -------------------------------------------------------------- warnings */
+
+  function warningsCard(report) {
+    var res = report.result || {};
+    var list = (res.warnings || []).concat(res.db_warnings || []);
+    var c = el('section', 'card');
+    var h = el('h2');
+    h.append(el('span', null, 'Предупреждения'));
+    h.append(el('span', 'n', String(list.length)));
+    c.append(h);
+    if (!list.length) { c.append(el('p', 'empty', 'Нет.')); return c; }
+    var ul = el('ul', 'ticks');
+    list.forEach(function (w) {
+      var li = el('li');
+      li.append(el('span', 't sev-medium', '⚠'));
+      li.append(el('span', 'b', String(w)));
+      ul.append(li);
+    });
+    c.append(ul);
+    return c;
+  }
+
+  /* ------------------------------------------------------- human text + raw */
+
+  function humanCard(item, out) {
+    var text = stripHuman(out.body || '');
+    var d = el('details', 'box');
+    var s = el('summary');
+    s.append(el('span', null, 'Человекочитаемая часть файла'));
+    d.append(s);
+    var inner = el('div', 'inner');
+    var bar = el('div', 'bar');
+    bar.append(el('span', 'note', 'Не является доказательством: печать считается только по payload. ' +
+      'Этот текст игрок может отредактировать без поломки печати — заключение всегда бери из машинычитаемой части.'));
+    var copy = el('button', 'btn sm', 'Скопировать текст');
+    copy.type = 'button';
+    copy.addEventListener('click', function () {
+      copyText(text).then(function (ok) { toast(ok ? 'Текст скопирован' : 'Браузер не дал буфер обмена'); });
+    });
+    bar.append(copy);
+    inner.append(bar);
+    var pre = el('pre', 'out');
+    pre.textContent = text ? text : '(пусто)';
+    inner.append(pre);
+    d.append(inner);
+    return d;
+  }
+
+  function stripHuman(body) {
+    var i = body.indexOf(CORE.PAYLOAD_START);
+    if (i < 0) return body;
+    var j = body.indexOf(CORE.SEAL_MARKER, i);
+    var tail = '';
+    if (j >= 0) {
+      var nl = body.indexOf('\n', j);
+      tail = nl >= 0 ? body.slice(nl + 1) : '';
+    }
+    return body.slice(0, i) + '…[машиночитаемая часть опущена]…\n' + tail;
+  }
+
+  function rawCard(out) {
+    var d = el('details', 'box');
+    d.id = 'rawbox';
+    var s = el('summary');
+    s.append(el('span', null, 'Машиночитаемая часть: JSON payload'));
+    d.append(s);
+    var inner = el('div', 'inner');
+    var bar = el('div', 'bar');
+    var btnPretty = el('button', 'btn sm' + (state.rawMode === 'pretty' ? ' primary' : ''), 'Отформатированный');
+    var btnRaw = el('button', 'btn sm' + (state.rawMode === 'raw' ? ' primary' : ''), 'Как в файле (одной строкой)');
+    var btnCopy = el('button', 'btn sm', 'Скопировать JSON');
+    btnPretty.type = 'button'; btnRaw.type = 'button'; btnCopy.type = 'button';
+    var pre = el('pre', 'out');
+    function paint() {
+      pre.textContent = out.rawJsonText ? (state.rawMode === 'pretty' ? prettyJson(out.rawJsonText) : out.rawJsonText)
+        : '(payload не разобран)';
+      btnPretty.className = 'btn sm' + (state.rawMode === 'pretty' ? ' primary' : '');
+      btnRaw.className = 'btn sm' + (state.rawMode === 'raw' ? ' primary' : '');
+    }
+    btnPretty.addEventListener('click', function () { state.rawMode = 'pretty'; paint(); });
+    btnRaw.addEventListener('click', function () { state.rawMode = 'raw'; paint(); });
+    btnCopy.addEventListener('click', function () {
+      copyText(out.rawJsonText || '').then(function (ok) { toast(ok ? 'JSON скопирован' : 'Браузер не дал буфер обмена'); });
+    });
+    bar.append(btnPretty, btnRaw, btnCopy);
+    bar.append(el('span', 'note', 'Декодировано из base64 через TextDecoder("utf-8"): это ровно те байты, ' +
+      'которые лежат между маркерами.'));
+    inner.append(bar);
+    inner.append(pre);
+    d.append(inner);
+    paint();
+    return d;
+  }
+
+  function prettyJson(text) {
+    try { return JSON.stringify(JSON.parse(text), null, 2); }
+    catch (e) { return text; }
+  }
+
+  function summaryForTicket(item, report) {
+    var res = report.result || {};
+    var lines = [
+      'Отчёт ' + report.id,
+      'Заключение: ' + ru(VERDICT_RU, res.verdict) + ' (балл ' + (res.score || 0) + ')',
+      'Приложение: swcc ' + report.app_version + ', база ' + (res.db_version || '—'),
+      'Сформирован: ' + report.created_at,
+      'Игрок: ' + ((res.environment && res.environment.user) || '—') +
+        ' · ОС: ' + ((res.environment && res.environment.os) || '—'),
+      'Печать: ' + (item.outcome && item.outcome.intact ? 'сходится' : 'НЕ сходится') +
+        ' (' + (item.outcome ? item.outcome.fileSeal || '—' : '—') + ')'
+    ];
+    var fams = res.families || [];
+    if (fams.length) {
+      lines.push('Семейства: ' + fams.map(function (f) {
+        return f.family + ' [' + (SEVERITY_RU[f.severity] || f.severity) + ' ×' + f.findings + ']';
+      }).join(', '));
+    }
+    return lines.join('\n');
+  }
+
+  /* --------------------------------------------------------------------- tabs */
+
+  function renderTabs() {
+    var box = $('tabs');
+    box.textContent = '';
+    if (state.items.length < 1) { box.hidden = true; return; }
+    box.hidden = false;
+    state.items.forEach(function (item, idx) {
+      var t = el('button', 'tab');
+      t.type = 'button';
+      t.setAttribute('role', 'tab');
+      t.setAttribute('aria-selected', idx === state.active ? 'true' : 'false');
+      var dot = el('span', 'dot' + (item.error ? ' bad' : (item.outcome ? (item.outcome.intact ? ' ok' : ' bad') : '')));
+      t.append(dot);
+      var nm = el('span', 'nm');
+      nm.textContent = (item.outcome && item.outcome.report && item.outcome.report.id)
+        ? item.outcome.report.id + ' · ' + item.name
+        : item.name;
+      t.append(nm);
+      var close = el('span', 'x', '×');
+      close.setAttribute('title', 'Убрать');
+      close.addEventListener('click', function (e) {
+        e.stopPropagation();
+        removeItem(idx);
+      });
+      t.append(close);
+      t.addEventListener('click', function () { state.active = idx; render(); });
+      box.append(t);
+    });
+  }
+
+  function removeItem(idx) {
+    state.items.splice(idx, 1);
+    if (!state.items.length) state.active = -1;
+    else state.active = Math.min(state.active >= idx ? state.active - 1 : state.active, state.items.length - 1);
+    render();
+  }
+
+  /* ------------------------------------------------------------------ события */
+
+  function bind() {
+    var drop = $('drop'), picker = $('picker');
+
+    $('pick').addEventListener('click', function (e) {
+      e.stopPropagation();
+      picker.click();
+    });
+    drop.addEventListener('click', function () { picker.click(); });
+    drop.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        picker.click();
+      }
+    });
+    picker.addEventListener('change', function () {
+      addFiles(picker.files);
+      picker.value = '';
+    });
+
+    ['dragenter', 'dragover'].forEach(function (type) {
+      drop.addEventListener(type, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        drop.classList.add('hot');
+        if (e.dataTransfer) try { e.dataTransfer.dropEffect = 'copy'; } catch (err) { /* не критично */ }
+      });
+    });
+    drop.addEventListener('dragleave', function (e) {
+      if (e.relatedTarget && drop.contains(e.relatedTarget)) return;
+      drop.classList.remove('hot');
+    });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      drop.classList.remove('hot');
+      var dt = e.dataTransfer;
+      if (!dt) return;
+      if (dt.files && dt.files.length) { addFiles(dt.files); return; }
+      var text = '';
+      try { text = dt.getData('text/plain') || ''; } catch (err) { text = ''; }
+      if (text) {
+        addText(text, 'файл из перетаскивания');
+      } else {
+        intakeError('В перетаскивании не оказалось ни файла, ни текста.');
+      }
+    });
+
+    // Не даём браузеру открыть файл вместо нас, если капнули мимо зоны.
+    window.addEventListener('dragover', function (e) { e.preventDefault(); });
+    window.addEventListener('drop', function (e) {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+
+    // Вставка: Discord отдаёт файл в clipboardData.files, обычный Ctrl+V — текст.
+    window.addEventListener('paste', function (e) {
+      if (!e.clipboardData) return;
+      var tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') {
+        var isSearch = document.activeElement && document.activeElement.type === 'search';
+        if (!isSearch) return;
+      }
+      var files = e.clipboardData.files;
+      if (files && files.length) {
+        e.preventDefault();
+        addFiles(files);
+        return;
+      }
+      var text = '';
+      try { text = e.clipboardData.getData('text/plain'); } catch (err) { text = ''; }
+      if (text && text.indexOf(CORE.PAYLOAD_START) >= 0) {
+        e.preventDefault();
+        addText(text, 'вставленный текст отчёта');
+      }
+    });
+
+    $('clear').addEventListener('click', function (e) {
+      e.stopPropagation();
+      state.items = [];
+      state.active = -1;
+      intakeError(null);
+      render();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      var ae = document.activeElement;
+      var typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' ||
+        ae.isContentEditable);
+      if (e.key === 'Escape') {
+        if (typing) { ae.blur(); return; }
+        if ($('keys').open) $('keys').open = false;
+        return;
+      }
+      if (typing) return;
+      var k = e.key.toLowerCase();
+      if (k === 'o') { e.preventDefault(); $('picker').click(); }
+      else if (k === '/') {
+        var q = $('f-q');
+        if (q) { e.preventDefault(); q.focus(); q.select(); }
+      } else if (e.key === '[' || e.key === ']') {
+        if (state.items.length > 1) {
+          e.preventDefault();
+          var n = state.items.length;
+          state.active = (state.active + (e.key === ']' ? 1 : -1) + n) % n;
+          render();
+        }
+      } else if (k === 'j') {
+        var box = $('rawbox');
+        if (box) { e.preventDefault(); box.open = !box.open; if (box.open) box.scrollIntoView({ block: 'nearest' }); }
+      } else if (k === 'c') {
+        var item = activeItem();
+        if (item && item.outcome && item.outcome.report) {
+          e.preventDefault();
+          var txt = summaryForTicket(item, item.outcome.report);
+          copyText(txt).then(function (ok) { toast(ok ? 'Сводка скопирована' : 'Браузер не дал буфер обмена'); });
+        }
+      } else if (k === '?') {
+        e.preventDefault();
+        var d = $('keys');
+        d.open = !d.open;
+      }
+    });
+  }
+
+  function fillMemo() {
+    var ol = $('memo-check');
+    CHECK_MEMO.forEach(function (t) { ol.append(el('li', null, t)); });
+    var ul = $('memo-limits');
+    LIMIT_MEMO.forEach(function (t) { ul.append(el('li', null, t)); });
+  }
+
+  function paintEngineChip() {
+    var chip = $('chip-engine');
+    if (CORE.subtleAvailable()) {
+      chip.textContent = 'SHA-256: WebCrypto (crypto.subtle)';
+      chip.className = 'chip ok';
+    } else {
+      chip.textContent = 'SHA-256: встроенная реализация (crypto.subtle недоступен)';
+      chip.className = 'chip warn';
+      chip.title = 'Страница открыта в контексте без secure-context: crypto.subtle недоступен, ' +
+        'поэтому печать считается встроенной реализацией того же SHA-256. Результат идентичен.';
+    }
+  }
+
+  function boot() {
+    fillMemo();
+    bind();
+    paintEngineChip();
+    render();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

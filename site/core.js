@@ -17,6 +17,16 @@
   var SEAL_MARKER = '!SEAL!';
   var SEAL_SALT = 'sunrise-worlds-swcc-seal-v1';
 
+  // Закрытый контейнер .swcc v2 (src/swcc.rs): магия | nonce | длина u32 LE |
+  // ciphertext | печать контейнера. Текст отчёта зашифрован, поэтому Блокнот
+  // показывает мусор. Ключ выводится из констант программы игрока - это защита
+  // от чтения и случайной правки, а не секрет от самого игрока.
+  var CONTAINER_MAGIC = [0x53, 0x57, 0x43, 0x43, 0x02, 0x00];
+  var CONTAINER_SALT = 'sunrise-worlds-swcc-container-v2';
+  var NONCE_LEN = 16;
+  var TAG_LEN = 16;
+  var HEADER_LEN = 26;
+
   // Формулировки отказов — дословно как в Report::verify (src/swcc.rs),
   // чтобы консоль, GUI и эта страница не противоречили друг другу.
   var MSG = {
@@ -31,7 +41,10 @@
     },
     intact: function (id, verdictRu) {
       return 'Целостность подтверждена. Отчёт ' + id + ' не редактирован (заключение: ' + verdictRu + ').';
-    }
+    },
+    containerTruncated: 'Файл .swcc обрезан: контейнер не дочитан.',
+    containerLength: 'Файл .swcc повреждён: длина контейнера не совпадает с файлом.',
+    containerTag: 'Печать контейнера не сходится: файл изменён или повреждён.'
   };
 
   var B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -149,6 +162,86 @@
     return sha256(joined).then(sealFromDigest);
   }
 
+  // --- Закрытый контейнер ----------------------------------------------------
+
+  function digest(bytes, localOnly) {
+    return localOnly ? Promise.resolve(sha256Local(bytes)) : sha256(bytes);
+  }
+
+  function isContainer(bytes) {
+    if (!bytes || bytes.length < CONTAINER_MAGIC.length) return false;
+    for (var i = 0; i < CONTAINER_MAGIC.length; i++) {
+      if (bytes[i] !== CONTAINER_MAGIC[i]) return false;
+    }
+    return true;
+  }
+
+  function u32be(n) {
+    return new Uint8Array([(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]);
+  }
+
+  function sameBytes(a, b) {
+    if (a.length !== b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0;
+  }
+
+  function containerKey(localOnly) {
+    var enc = new TextEncoder();
+    return digest(concatBytes(enc.encode(CONTAINER_SALT), enc.encode(SEAL_SALT)), localOnly);
+  }
+
+  // Поточный XOR на SHA-256: блок i = SHA256(key | nonce | i). Тот же алгоритм,
+  // что в Rust, и тот же движок хеширования, что уже сверен с печатью.
+  async function xorCrypt(key, nonce, data, localOnly) {
+    var out = new Uint8Array(data.length);
+    var block = 0;
+    for (var off = 0; off < data.length; off += 32, block++) {
+      var stream = await digest(concatBytes(key, nonce, u32be(block)), localOnly);
+      var n = Math.min(32, data.length - off);
+      for (var j = 0; j < n; j++) out[off + j] = data[off + j] ^ stream[j];
+    }
+    return out;
+  }
+
+  function containerTag(key, nonce, body, localOnly) {
+    return digest(concatBytes(key, nonce, body), localOnly).then(function (d) {
+      return d.subarray(0, TAG_LEN);
+    });
+  }
+
+  function containerFailure(kind, detail, localOnly) {
+    return {
+      ok: false, kind: kind, detail: detail,
+      hashEngine: localOnly ? 'local-sha256' : (subtleAvailable() ? 'webcrypto' : 'local-sha256')
+    };
+  }
+
+  function openContainer(bytes, localOnly) {
+    if (bytes.length < HEADER_LEN + TAG_LEN) {
+      return Promise.resolve(containerFailure('container_truncated', MSG.containerTruncated, localOnly));
+    }
+    var nonce = bytes.subarray(CONTAINER_MAGIC.length, CONTAINER_MAGIC.length + NONCE_LEN);
+    var at = CONTAINER_MAGIC.length + NONCE_LEN;
+    var bodyLen = (bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0;
+    if (HEADER_LEN + bodyLen + TAG_LEN !== bytes.length) {
+      return Promise.resolve(containerFailure('container_length', MSG.containerLength, localOnly));
+    }
+    var body = bytes.subarray(HEADER_LEN, HEADER_LEN + bodyLen);
+    var fileTag = bytes.subarray(HEADER_LEN + bodyLen);
+    return containerKey(localOnly).then(function (key) {
+      return containerTag(key, nonce, body, localOnly).then(function (tag) {
+        if (!sameBytes(tag, fileTag)) {
+          return containerFailure('container_tag', MSG.containerTag, localOnly);
+        }
+        return xorCrypt(key, nonce, body, localOnly).then(function (plain) {
+          return { ok: true, text: new TextDecoder('utf-8').decode(plain) };
+        });
+      });
+    });
+  }
+
   function decodeBase64Strict(s) {
     if (!s || s.length % 4 !== 0) return null;
     var end = s.length, pad = 0;
@@ -262,12 +355,44 @@
     });
   }
 
+  /**
+   * verifyBytes(bytes, formatVerdict, localOnly) -> Promise<outcome>
+   * Файл целиком: закрытый контейнер v2 или открытый текст v1. К результату
+   * verifyText добавляется container - админ видит, какого формата файл пришёл.
+   */
+  function verifyBytes(bytes, formatVerdict, localOnly) {
+    if (!isContainer(bytes)) {
+      var text = new TextDecoder('utf-8').decode(bytes || new Uint8Array(0));
+      return verifyText(text, formatVerdict, localOnly).then(function (out) {
+        out.container = false;
+        return out;
+      });
+    }
+    return openContainer(bytes, localOnly).then(function (opened) {
+      if (!opened.ok) {
+        return {
+          intact: false, kind: opened.kind, detail: opened.detail, payload: null,
+          payloadBytes: null, rawJsonText: null, fileSeal: '', expectedSeal: '',
+          report: null, body: '', bytes: bytes, container: true, hashEngine: opened.hashEngine
+        };
+      }
+      return verifyText(opened.text, formatVerdict, localOnly).then(function (out) {
+        out.container = true;
+        return out;
+      });
+    });
+  }
+
   global.SWCC_CORE = {
     WIDTH: WIDTH,
     PAYLOAD_START: PAYLOAD_START,
     PAYLOAD_END: PAYLOAD_END,
     SEAL_MARKER: SEAL_MARKER,
     SEAL_SALT: SEAL_SALT,
+    CONTAINER_MAGIC: CONTAINER_MAGIC,
+    CONTAINER_SALT: CONTAINER_SALT,
+    HEADER_LEN: HEADER_LEN,
+    TAG_LEN: TAG_LEN,
     MSG: MSG,
     stripBom: stripBom,
     stripWhitespace: stripWhitespace,
@@ -280,6 +405,12 @@
     decodeBase64Strict: decodeBase64Strict,
     locate: locate,
     sealInFile: sealInFile,
-    verifyText: verifyText
+    verifyText: verifyText,
+    isContainer: isContainer,
+    containerKey: containerKey,
+    containerTag: containerTag,
+    xorCrypt: xorCrypt,
+    openContainer: openContainer,
+    verifyBytes: verifyBytes
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

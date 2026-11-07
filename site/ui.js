@@ -65,7 +65,8 @@
     ArchiveContent: 'содержимое архива',
     TextContent: 'содержимое текста',
     LaunchLog: 'лог запуска',
-    KnownHash: 'файл совпадает с известным признаком'
+    KnownHash: 'файл совпадает с известным признаком',
+    TransparentTexture: 'прозрачная текстура блока'
   };
 
   var ROOT_KIND_RU = {
@@ -86,7 +87,7 @@
   var LIMIT_MEMO = [
     'Сканер ищет файлы по известным сигнатурам. Самописный или пересобранный чит он может не увидеть: чистый отчёт не равен честной игре.',
     'Ложные срабатывания возможны: совпадение имени или строки в легитимном моде - не чит. Поэтому у каждой находки указан признак и уверенность.',
-    'Отчёт формируется на машине игрока, которую он контролирует. Печать ниже ловит случайную правку и повреждение файла, но не подделку: ключ печати находится в той же программе, что и у игрока.',
+    'Отчёт формируется на машине игрока, которую он контролирует. Файл закрыт контейнером и защищён печатью: это ловит случайную правку и повреждение, но не подделку - ключи лежат в той же программе, что и у игрока.',
     'Отсюда вывод: решение принимай по совокупности - отчёт + запрошенные у игрока файлы + серверные логи поведения.'
   ];
 
@@ -281,15 +282,16 @@
   }
 
   /* ---------------------------------------------------------------------- доступ
-     Только чтение: ни fetch, ни XHR, ни form. Файл идёт в FileReader -> память вкладки. */
+     Только чтение: ни fetch, ни XHR, ни form. Файл идёт в FileReader -> память вкладки.
+     Байты, а не текст: отчёты v2 приходят закрытым двоичным контейнером. */
 
-  function readFileText(file) {
+  function readFileBytes(file) {
     return new Promise(function (resolve, reject) {
       var fr = new FileReader();
-      fr.onload = function () { resolve(String(fr.result)); };
+      fr.onload = function () { resolve(new Uint8Array(fr.result)); };
       fr.onerror = function () { reject(new Error('Файл не прочитан: ' + (file && file.name ? file.name : '?'))); };
       try {
-        fr.readAsText(file, 'utf-8'); // TextDecoder снимает BOM; на всякий случай stripBom в CORE
+        fr.readAsArrayBuffer(file);
       } catch (e) {
         reject(e);
       }
@@ -297,7 +299,7 @@
   }
 
   var state = {
-    items: [],       // {id, name, size, text, outcome, error}
+    items: [],       // {id, name, size, bytes, text, outcome, error}
     active: -1,
     filter: { q: '', family: '', min: 'info' },
     rawMode: 'pretty',
@@ -322,16 +324,16 @@
     if (!list.length) return;
     intakeError(null);
     var jobs = list.map(function (file) {
-      return readFileText(file).then(function (text) {
-        return { name: file.name || '(без имени)', size: file.size || text.length, text: text };
+      return readFileBytes(file).then(function (bytes) {
+        return { name: file.name || '(без имени)', size: file.size || bytes.length, bytes: bytes };
       }, function (err) {
-        return { name: file.name || '(без имени)', size: 0, text: null, error: String(err && err.message ? err.message : err) };
+        return { name: file.name || '(без имени)', size: 0, bytes: null, error: String(err && err.message ? err.message : err) };
       });
     });
     Promise.all(jobs).then(function (loaded) {
       loaded.forEach(function (item) {
         seq += 1;
-        var entry = { id: seq, name: item.name, size: item.size, text: item.text, outcome: null, error: item.error || null };
+        var entry = { id: seq, name: item.name, size: item.size, bytes: item.bytes || null, text: null, outcome: null, error: item.error || null };
         state.items.push(entry);
         state.active = state.items.length - 1;
       });
@@ -343,7 +345,7 @@
 
   function addText(text, name) {
     seq += 1;
-    state.items.push({ id: seq, name: name || 'текст из буфера', size: text.length, text: text, outcome: null, error: null });
+    state.items.push({ id: seq, name: name || 'текст из буфера', size: text.length, bytes: null, text: text, outcome: null, error: null });
     state.active = state.items.length - 1;
     return resolveAll().then(render);
   }
@@ -351,17 +353,20 @@
   function resolveAll() {
     var chain = Promise.resolve();
     state.items.forEach(function (item) {
-      if (item.error || !item.text) return;
+      if (item.error || (!item.bytes && !item.text)) return;
       if (item.outcome && item.outcome.resolved) return;
       chain = chain.then(function () {
-        return CORE.verifyText(item.text, verdictRuFromReport).then(function (outcome) {
+        var job = item.bytes
+          ? CORE.verifyBytes(item.bytes, verdictRuFromReport)
+          : CORE.verifyText(item.text, verdictRuFromReport);
+        return job.then(function (outcome) {
           outcome.resolved = true;
           item.outcome = outcome;
         }, function (err) {
           item.outcome = {
             resolved: true, intact: false, kind: 'bad_json',
             detail: CORE.MSG.badJsonPrefix + (err && err.message ? err.message : err),
-            report: null, payload: null, fileSeal: '', expectedSeal: '', body: item.text
+            report: null, payload: null, fileSeal: '', expectedSeal: '', body: item.text || ''
           };
         });
       });
@@ -447,6 +452,8 @@
     if (out.intact) { tone = 'ok'; title = 'Печать сходится'; glyph = '✓'; }
     else if (out.kind === 'no_payload' || out.kind === 'no_payload_end') { tone = 'part'; title = 'Payload не найден'; glyph = '!'; }
     else if (out.kind === 'no_seal') { tone = 'part'; title = 'Печать в файле отсутствует'; glyph = '!'; }
+    else if (out.kind === 'container_tag') { tone = 'bad'; title = 'Печать контейнера НЕ сходится — файл изменён'; glyph = '✕'; }
+    else if (out.kind === 'container_truncated' || out.kind === 'container_length') { tone = 'part'; title = 'Контейнер .swcc повреждён'; glyph = '!'; }
     else { tone = 'bad'; title = 'Печать НЕ сходится — файл отредактирован'; glyph = '✕'; }
 
     var b = el('section', 'banner ' + tone);
@@ -463,7 +470,10 @@
     b.append(head);
 
     var box = el('div', 'sealbox');
-    box.append(sealCell('Печать в файле (!SEAL!)', out.fileSeal || 'нет строки печати', out.intact ? 'ok' : 'bad'));
+    box.append(sealCell('Контейнер файла', out.container
+      ? 'закрытый (swcc/2): текст отчёта зашифрован'
+      : 'открытый текст (swcc/1, отчёт старой версии)', ''));
+    box.append(sealCell('Печать в файле (!SEAL!)', out.fileSeal || (out.container ? 'контейнер не открыт' : 'нет строки печати'), out.intact ? 'ok' : 'bad'));
     box.append(sealCell('Пересчитано в браузере', out.expectedSeal || 'н/д (payload не разобран)', out.intact ? 'ok' : 'bad'));
     box.append(sealCell('Payload, длина base64', out.payload ? fmtInt(out.payload.length) + ' симв. (между маркерами, пробелы удалены)' : '—', ''));
     box.append(sealCell('Чем пересчитана печать', engineLabel(out), ''));
@@ -475,6 +485,10 @@
     algo.textContent = 'Печать = контрольная сумма машиночитаемой части с солью "' + CORE.SEAL_SALT + '", ' +
       'первые 24 символа. Она подтверждает только то, что машиночитаемая часть не менялась после ' +
       'формирования отчёта. Она не доказывает авторство: соль лежит в программе игрока.';
+    if (out.container) {
+      algo.textContent += ' Контейнер закрыт тем же способом: его ключ выводится из констант программы, ' +
+        'поэтому это защита от чтения и случайной правки, а не секрет от самого игрока.';
+    }
     b.append(algo);
 
     if (!out.intact && out.report) {
@@ -505,7 +519,16 @@
     var c = el('section', 'card');
     c.append(el('h2', null, 'Разбор'));
     var p = el('p', 'note bad');
-    if (out.kind === 'bad_base64') {
+    if (out.kind === 'container_tag') {
+      p.textContent = 'Файл закрыт контейнером, но печать контейнера не сошлась: его правили после ' +
+        'формирования или он побился при пересылке. Содержимое не прочитано — показывать нечего.';
+    } else if (out.kind === 'container_truncated') {
+      p.textContent = 'Контейнер оборван: от файла не осталось даже заголовка с печатью. ' +
+        'Попроси игрока переслать сам файл .swcc заново — не копировать его содержимое в текст Discord.';
+    } else if (out.kind === 'container_length') {
+      p.textContent = 'Контейнер пришёл не целиком: длина в заголовке не совпадает с файлом. ' +
+        'Попроси игрока переслать сам файл .swcc заново — не копировать его содержимое в текст Discord.';
+    } else if (out.kind === 'bad_base64') {
       p.textContent = 'Машиночитаемая часть между маркерами есть, но не декодируется как base64. ' +
         'Обычно это значит, что файл правили текстовым редактором или он обрезался при пересылке.';
     } else if (out.kind === 'bad_json') {
@@ -530,10 +553,14 @@
     });
     push(tpl, tplCode, tplCopy);
     c.append(tpl);
-    var pre = el('pre', 'excerpt');
-    pre.textContent = headSnippet(out.body || '', 1400);
-    c.append(el('p', 'note', 'Начало файла (первые 1400 симв.), чтобы понять, что именно пришло:'));
-    c.append(pre);
+    if (out.body) {
+      var pre = el('pre', 'excerpt');
+      pre.textContent = headSnippet(out.body, 1400);
+      c.append(el('p', 'note', 'Начало файла (первые 1400 симв.), чтобы понять, что именно пришло:'));
+      c.append(pre);
+    } else {
+      c.append(el('p', 'note', 'Текста нет: двоичный контейнер целиком не читается как текст.'));
+    }
     return c;
   }
 
@@ -903,6 +930,7 @@
       kvItem('Каталогов пройдено', fmtInt(st.dirs_walked)),
       kvItem('Прочитано байт', fmtBytes(st.bytes_read)),
       kvItem('Архивов открыто', fmtInt(st.archives_opened)),
+      kvItem('Текстур проверено на прозрачность', fmtInt(st.textures_checked)),
       kvItem('Архивов распаковано глубоко', fmtInt(st.archives_deep_scanned)),
       kvItem('Архивов пропущено по бюджету', fmtInt(st.archives_skipped_by_budget)),
       kvItem('Системных каталогов пропущено', fmtInt(st.dirs_pruned_system)),
@@ -1314,12 +1342,17 @@
     var text = stripHuman(out.body || '');
     var d = el('details', 'box');
     var s = el('summary');
-    s.append(el('span', null, 'Человекочитаемая часть файла'));
+    s.append(el('span', null, out.container
+      ? 'Человекочитаемая часть (из закрытого контейнера)'
+      : 'Человекочитаемая часть файла'));
     d.append(s);
     var inner = el('div', 'inner');
     var bar = el('div', 'bar');
-    bar.append(el('span', 'note', 'Не является доказательством: печать считается только по payload. ' +
-      'Этот текст игрок может отредактировать без поломки печати — заключение всегда бери из машиночитаемой части.'));
+    bar.append(el('span', 'note', out.container
+      ? 'Текст извлечён из закрытого контейнера: в самом файле он зашифрован, и правка в Блокноте ' +
+        'ломает печать контейнера. Заключение всё равно бери из машиночитаемой части.'
+      : 'Не является доказательством: печать считается только по payload. ' +
+        'Этот текст игрок может отредактировать без поломки печати — заключение всегда бери из машиночитаемой части.'));
     var copy = el('button', 'btn sm', 'Скопировать текст');
     copy.type = 'button';
     copy.addEventListener('click', function () {
